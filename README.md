@@ -43,6 +43,8 @@ Plugin e mod oficial do servidor para integração com o **Haikyo Client** em **
 | `haikyo-paper` | Paper & Folia 26.3+ | Self-contained Paper/Folia plugin JAR (`folia-supported: true`), `/haikyo` commands, GrimAC / Vulcan / Generic adapters, Simple Voice Chat Mode A adapter, and `waypoints` example mod. |
 | `haikyo-velocity` | Velocity 4.3.1+ | Self-contained Velocity proxy plugin JAR implementing the `proxy` role and `haikyo:link` session forwarding. |
 | `haikyo-fabric` | Fabric 26.3 | Self-contained Fabric server mod JAR reusing `haikyo-core`, Brigadier `/haikyo` commands, `waypoints`, `haikyo:admin`, and Simple Voice Chat Mode A entrypoint. |
+| `haikyo-pumpkin` | PumpkinMC (Rust Native) | High-performance native Rust cdylib plugin for PumpkinMC servers (Minecraft 26.3). Wire framing, Ed25519 offline verification, `/haikyo` commands. |
+| `haikyo-pumpkin-wasm` | PumpkinMC (Wasm Component) | Universal WebAssembly Component plugin targeting `pumpkin-plugin-api` (Wasm/WIT). Sandboxed execution across operating systems. |
 
 ## Requirements
 

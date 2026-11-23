@@ -1,0 +1,31 @@
+[package]
+name = "haikyo-pumpkin"
+version = "0.1.0"
+edition = "2024"
+authors = ["Comquister <contato@conquister.net>"]
+description = "Haikyo Client official integration plugin for PumpkinMC (Minecraft 26.3)"
+license = "AGPL-3.0-or-later"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+pumpkin-core = { path = "../../work/pumpkin-repo/crates/pumpkin-core" }
+pumpkin-api-macros = { path = "../../work/pumpkin-repo/crates/pumpkin-api-macros" }
+pumpkin-util = { path = "../../work/pumpkin-repo/crates/pumpkin-util" }
+tokio = { version = "1.44", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+toml = "0.8"
+sha2 = "0.10"
+ed25519-dalek = { version = "2.1", features = ["default"] }
+hex = "0.4"
+base64 = "0.22"
+bytes = "1.10"
+tracing = "0.1"
+uuid = { version = "1.15", features = ["v4", "serde"] }
+
+[dev-dependencies]
+serde_json = "1.0"
+hex = "0.4"
+base64 = "0.22"
