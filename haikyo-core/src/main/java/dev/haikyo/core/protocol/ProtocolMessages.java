@@ -23,6 +23,7 @@ import dev.haikyo.core.mods.ModRule;
 import dev.haikyo.core.util.Hex;
 import dev.haikyo.core.util.JsonCodec;
 
+import java.io.ByteArrayOutputStream;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
@@ -408,6 +409,287 @@ public final class ProtocolMessages {
             System.arraycopy(AC_HMAC_PREFIX, 0, macInput, 0, AC_HMAC_PREFIX.length);
             System.arraycopy(bodyWithoutHmac, 0, macInput, AC_HMAC_PREFIX.length, bodyWithoutHmac.length);
             return HaikyoLinkCodec.hmacSha256(sessionKey, macInput);
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Phase 7: haikyo:admin (0x01..0x04)
+    // -------------------------------------------------------------------------
+
+    public record AdminRequest(
+            String requestId,
+            String kind,
+            String hwidSalt,
+            Integer maxWidth,
+            Integer maxHeight,
+            Integer jpegQuality,
+            Integer maxBytes
+    ) {
+        public byte[] encodeJson() {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("request_id", requestId);
+            m.put("kind", kind);
+            if (hwidSalt != null && !hwidSalt.isEmpty()) {
+                m.put("hwid_salt", hwidSalt);
+            }
+            if (maxWidth != null) {
+                m.put("max_width", maxWidth);
+            }
+            if (maxHeight != null) {
+                m.put("max_height", maxHeight);
+            }
+            if (jpegQuality != null) {
+                m.put("jpeg_quality", jpegQuality);
+            }
+            if (maxBytes != null) {
+                m.put("max_bytes", maxBytes);
+            }
+            return JsonCodec.stringify(m).getBytes(StandardCharsets.UTF_8);
+        }
+
+        public static AdminRequest decodeJson(byte[] body) {
+            Map<String, Object> m = JsonCodec.parseObject(new String(body, StandardCharsets.UTF_8));
+            return new AdminRequest(
+                    JsonCodec.asString(m, "request_id", ""),
+                    JsonCodec.asString(m, "kind", ""),
+                    JsonCodec.asNullableString(m, "hwid_salt"),
+                    m.get("max_width") instanceof Number n ? n.intValue() : null,
+                    m.get("max_height") instanceof Number n ? n.intValue() : null,
+                    m.get("jpeg_quality") instanceof Number n ? n.intValue() : null,
+                    m.get("max_bytes") instanceof Number n ? n.intValue() : null
+            );
+        }
+    }
+
+    public record AdminInfoResponse(
+            String requestId,
+            String error,
+            String version,
+            String channel,
+            String exeSha256,
+            String os,
+            String cpu,
+            String gpu,
+            long ramMb,
+            String display,
+            String language,
+            int avgFps,
+            String hwid,
+            boolean agentControl,
+            List<String> mods,
+            List<String> signals
+    ) {
+        public byte[] encodeJson() {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("request_id", requestId);
+            m.put("error", error);
+            m.put("version", version);
+            m.put("channel", channel);
+            m.put("exe_sha256", exeSha256);
+            m.put("os", os);
+            m.put("cpu", cpu);
+            m.put("gpu", gpu);
+            m.put("ram_mb", ramMb);
+            m.put("display", display);
+            m.put("language", language);
+            m.put("avg_fps", avgFps);
+            m.put("hwid", hwid);
+            m.put("agent_control", agentControl);
+            m.put("mods", mods);
+            m.put("signals", signals);
+            return JsonCodec.stringify(m).getBytes(StandardCharsets.UTF_8);
+        }
+
+        public static AdminInfoResponse decodeJson(byte[] body) {
+            Map<String, Object> m = JsonCodec.parseObject(new String(body, StandardCharsets.UTF_8));
+            return new AdminInfoResponse(
+                    JsonCodec.asString(m, "request_id", ""),
+                    JsonCodec.asNullableString(m, "error"),
+                    JsonCodec.asString(m, "version", ""),
+                    JsonCodec.asString(m, "channel", ""),
+                    JsonCodec.asString(m, "exe_sha256", ""),
+                    JsonCodec.asString(m, "os", ""),
+                    JsonCodec.asString(m, "cpu", ""),
+                    JsonCodec.asString(m, "gpu", ""),
+                    JsonCodec.asLong(m, "ram_mb", 0L),
+                    JsonCodec.asString(m, "display", ""),
+                    JsonCodec.asString(m, "language", ""),
+                    JsonCodec.asInt(m, "avg_fps", 0),
+                    JsonCodec.asString(m, "hwid", ""),
+                    JsonCodec.asBoolean(m, "agent_control", false),
+                    JsonCodec.asStringList(m, "mods"),
+                    JsonCodec.asStringList(m, "signals")
+            );
+        }
+    }
+
+    public record AdminHwidResponse(String requestId, String error, String hwid) {
+        public byte[] encodeJson() {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("request_id", requestId);
+            m.put("error", error);
+            m.put("hwid", hwid);
+            return JsonCodec.stringify(m).getBytes(StandardCharsets.UTF_8);
+        }
+
+        public static AdminHwidResponse decodeJson(byte[] body) {
+            Map<String, Object> m = JsonCodec.parseObject(new String(body, StandardCharsets.UTF_8));
+            return new AdminHwidResponse(
+                    JsonCodec.asString(m, "request_id", ""),
+                    JsonCodec.asNullableString(m, "error"),
+                    JsonCodec.asString(m, "hwid", "")
+            );
+        }
+    }
+
+    /**
+     * Compact binary {@code haikyo:admin} {@code 0x04} screenshot response:
+     * {@code request_id:lp_str | status:u8 | error:lp_str | width:u16 | height:u16 | mime_type:lp_str | image_len:u32 | image_bytes}.
+     */
+    public record AdminScreenshotResponse(
+            String requestId,
+            int status,
+            String error,
+            int width,
+            int height,
+            String mimeType,
+            byte[] imageBytes
+    ) {
+        public static final int STATUS_OK = 0;
+        public static final int STATUS_CONSENT_DECLINED = 1;
+        public static final int STATUS_RATE_LIMITED = 2;
+        public static final int STATUS_CAPTURE_FAILED = 3;
+        public static final int MAX_IMAGE_BYTES = 1_048_576;
+
+        public byte[] encodeBinary() {
+            byte[] img = imageBytes == null ? new byte[0] : imageBytes;
+            if (img.length > MAX_IMAGE_BYTES) {
+                throw new IllegalArgumentException("Screenshot image exceeds 1 MiB limit: " + img.length);
+            }
+            ByteArrayOutputStream out = new ByteArrayOutputStream(64 + img.length);
+            writeLpStr(out, requestId);
+            out.write(status & 0xFF);
+            writeLpStr(out, error == null ? "" : error);
+            out.write((width >>> 8) & 0xFF);
+            out.write(width & 0xFF);
+            out.write((height >>> 8) & 0xFF);
+            out.write(height & 0xFF);
+            writeLpStr(out, mimeType == null ? "image/jpeg" : mimeType);
+            ByteBuffer lenBuf = ByteBuffer.allocate(4).order(ByteOrder.BIG_ENDIAN);
+            lenBuf.putInt(img.length);
+            out.writeBytes(lenBuf.array());
+            out.writeBytes(img);
+            return out.toByteArray();
+        }
+
+        public static AdminScreenshotResponse decodeBinary(byte[] body) {
+            if (body == null || body.length < 15) {
+                throw new IllegalArgumentException("admin_screenshot_response too short");
+            }
+            ByteBuffer buf = ByteBuffer.wrap(body).order(ByteOrder.BIG_ENDIAN);
+            String requestId = readLpStr(buf);
+            if (!buf.hasRemaining()) {
+                throw new IllegalArgumentException("Truncated screenshot status");
+            }
+            int status = Byte.toUnsignedInt(buf.get());
+            String error = readLpStr(buf);
+            if (buf.remaining() < 4) {
+                throw new IllegalArgumentException("Truncated screenshot dimensions");
+            }
+            int width = Short.toUnsignedInt(buf.getShort());
+            int height = Short.toUnsignedInt(buf.getShort());
+            String mimeType = readLpStr(buf);
+            if (buf.remaining() < 4) {
+                throw new IllegalArgumentException("Truncated screenshot image_len");
+            }
+            long imgLenLong = Integer.toUnsignedLong(buf.getInt());
+            if (imgLenLong > MAX_IMAGE_BYTES) {
+                throw new IllegalArgumentException("Screenshot image_len exceeds 1 MiB: " + imgLenLong);
+            }
+            int imgLen = (int) imgLenLong;
+            if (buf.remaining() != imgLen) {
+                throw new IllegalArgumentException("Screenshot image_len mismatch: remaining=" + buf.remaining() + " expected=" + imgLen);
+            }
+            byte[] img = new byte[imgLen];
+            buf.get(img);
+            return new AdminScreenshotResponse(requestId, status, error, width, height, mimeType, img);
+        }
+
+        private static void writeLpStr(ByteArrayOutputStream out, String s) {
+            byte[] bytes = s == null ? new byte[0] : s.getBytes(StandardCharsets.UTF_8);
+            if (bytes.length > 0xFFFF) {
+                throw new IllegalArgumentException("lp_str too long: " + bytes.length);
+            }
+            out.write((bytes.length >>> 8) & 0xFF);
+            out.write(bytes.length & 0xFF);
+            out.writeBytes(bytes);
+        }
+
+        private static String readLpStr(ByteBuffer buf) {
+            if (buf.remaining() < 2) {
+                throw new IllegalArgumentException("Truncated lp_str length");
+            }
+            int len = Short.toUnsignedInt(buf.getShort());
+            if (buf.remaining() < len) {
+                throw new IllegalArgumentException("Truncated lp_str payload");
+            }
+            byte[] bytes = new byte[len];
+            buf.get(bytes);
+            return new String(bytes, StandardCharsets.UTF_8);
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Phase 8: haikyo:voice (0x01)
+    // -------------------------------------------------------------------------
+
+    public record VoiceConfigMessage(
+            String mode,
+            Double maxDistance,
+            Double whisperDistance,
+            String falloffMode,
+            Double falloffFactor,
+            Boolean allowGroups,
+            boolean recordingAllowed,
+            boolean muted,
+            boolean forceMuted,
+            long muteUntil,
+            String muteReason,
+            boolean adminVoiceActive
+    ) {
+        public byte[] encodeJson() {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("mode", mode);
+            m.put("max_distance", maxDistance);
+            m.put("whisper_distance", whisperDistance);
+            m.put("falloff_mode", falloffMode);
+            m.put("falloff_factor", falloffFactor);
+            m.put("allow_groups", allowGroups);
+            m.put("recording_allowed", recordingAllowed);
+            m.put("muted", muted);
+            m.put("force_muted", forceMuted);
+            m.put("mute_until", muteUntil);
+            m.put("mute_reason", muteReason);
+            m.put("admin_voice_active", adminVoiceActive);
+            return JsonCodec.stringify(m).getBytes(StandardCharsets.UTF_8);
+        }
+
+        public static VoiceConfigMessage decodeJson(byte[] body) {
+            Map<String, Object> m = JsonCodec.parseObject(new String(body, StandardCharsets.UTF_8));
+            return new VoiceConfigMessage(
+                    JsonCodec.asString(m, "mode", "off"),
+                    m.get("max_distance") instanceof Number n ? n.doubleValue() : null,
+                    m.get("whisper_distance") instanceof Number n ? n.doubleValue() : null,
+                    JsonCodec.asNullableString(m, "falloff_mode"),
+                    m.get("falloff_factor") instanceof Number n ? n.doubleValue() : null,
+                    m.get("allow_groups") instanceof Boolean b ? b : null,
+                    JsonCodec.asBoolean(m, "recording_allowed", false),
+                    JsonCodec.asBoolean(m, "muted", false),
+                    JsonCodec.asBoolean(m, "force_muted", false),
+                    JsonCodec.asLong(m, "mute_until", 0L),
+                    JsonCodec.asNullableString(m, "mute_reason"),
+                    JsonCodec.asBoolean(m, "admin_voice_active", false)
+            );
         }
     }
 }

@@ -17,6 +17,7 @@
  */
 package dev.haikyo.core.config;
 
+import dev.haikyo.core.admin.ScreenshotDeliveryService;
 import dev.haikyo.core.crypto.ServerAddressNormalizer;
 import dev.haikyo.core.mods.ModRule;
 import dev.haikyo.core.trust.AnticheatCheckTable;
@@ -65,8 +66,52 @@ public record HaikyoConfig(
         boolean useInputTelemetry,
         AnticheatCheckTable checkTable,
         boolean genericAdapterEnabled,
-        List<String> genericCommandPatterns
+        List<String> genericCommandPatterns,
+        AdminConfig admin,
+        VoiceConfig voice
 ) {
+    /**
+     * Convenience constructor defaulting {@link AdminConfig} and {@link VoiceConfig}.
+     */
+    public HaikyoConfig(
+            String language,
+            String configuredRole,
+            String serverAddress,
+            String serverId,
+            String downloadUrl,
+            boolean requireHaikyo,
+            int attestationTimeoutSeconds,
+            List<String> consentScopes,
+            Map<String, String> attestationPublicKeys,
+            Set<String> revokedVersions,
+            boolean requireNoAgent,
+            int reportIntervalMinSeconds,
+            int reportIntervalMaxSeconds,
+            String linkSharedSecret,
+            int linkSessionTtlSeconds,
+            Map<String, ModRule> modRules,
+            boolean waypointsEnabled,
+            List<WaypointMarker> waypointMarkers,
+            double samplingFraction,
+            boolean promoteSuspectToRequire,
+            boolean useInputTelemetry,
+            AnticheatCheckTable checkTable,
+            boolean genericAdapterEnabled,
+            List<String> genericCommandPatterns
+    ) {
+        this(
+                language, configuredRole, serverAddress, serverId, downloadUrl,
+                requireHaikyo, attestationTimeoutSeconds, consentScopes,
+                attestationPublicKeys, revokedVersions, requireNoAgent,
+                reportIntervalMinSeconds, reportIntervalMaxSeconds,
+                linkSharedSecret, linkSessionTtlSeconds, modRules,
+                waypointsEnabled, waypointMarkers, samplingFraction,
+                promoteSuspectToRequire, useInputTelemetry, checkTable,
+                genericAdapterEnabled, genericCommandPatterns,
+                AdminConfig.defaults(), VoiceConfig.defaults()
+        );
+    }
+
     public record WaypointMarker(
             String id,
             String name,
@@ -86,6 +131,42 @@ public record HaikyoConfig(
             m.put("z", z);
             m.put("color", color);
             return m;
+        }
+    }
+
+    public record AdminConfig(
+            String hwidSalt,
+            int auditRetentionDays,
+            ScreenshotDeliveryService.DeliveryConfig screenshotDelivery,
+            int screenshotMaxWidth,
+            int screenshotMaxHeight,
+            int screenshotJpegQuality,
+            int screenshotMaxBytes
+    ) {
+        public static AdminConfig defaults() {
+            return new AdminConfig(
+                    "",
+                    30,
+                    ScreenshotDeliveryService.DeliveryConfig.defaults(),
+                    1280,
+                    720,
+                    75,
+                    1_048_576
+            );
+        }
+    }
+
+    public record VoiceConfig(
+            String mode,
+            Double maxDistance,
+            Double whisperDistance,
+            String falloffMode,
+            Double falloffFactor,
+            Boolean allowGroups,
+            boolean recordingAllowed
+    ) {
+        public static VoiceConfig defaults() {
+            return new VoiceConfig("auto", 48.0, 16.0, "natural", 1.0, true, false);
         }
     }
 
@@ -207,6 +288,54 @@ public record HaikyoConfig(
         boolean genericEnabled = JsonCodec.asBoolean(genericObj, "enabled", false);
         List<String> genericPatterns = JsonCodec.asStringList(genericObj, "command-patterns");
 
+        // Phase 7: admin.*
+        Map<String, Object> adminMap = JsonCodec.asObject(root, "admin");
+        String hwidSalt = JsonCodec.asString(adminMap, "hwid-salt", "");
+        int auditDays = Math.max(1, JsonCodec.asInt(adminMap, "audit-retention-days", 30));
+        Map<String, Object> ssMap = JsonCodec.asObject(adminMap, "screenshot");
+        ScreenshotDeliveryService.Mode ssMode = ScreenshotDeliveryService.Mode.fromConfig(
+                JsonCodec.asString(ssMap, "delivery", "builtin")
+        );
+        int ssTtl = Math.max(10, JsonCodec.asInt(ssMap, "ttl-seconds", 3600));
+        int ssMaxW = Math.max(160, JsonCodec.asInt(ssMap, "max-width", 1280));
+        int ssMaxH = Math.max(120, JsonCodec.asInt(ssMap, "max-height", 720));
+        int ssQual = Math.max(20, Math.min(95, JsonCodec.asInt(ssMap, "jpeg-quality", 75)));
+        int ssMaxBytes = Math.max(32_768, Math.min(1_048_576, JsonCodec.asInt(ssMap, "max-bytes", 1_048_576)));
+        Map<String, Object> builtinMap = JsonCodec.asObject(ssMap, "builtin");
+        Map<String, Object> uploadMap = JsonCodec.asObject(ssMap, "upload");
+        ScreenshotDeliveryService.DeliveryConfig deliveryCfg = new ScreenshotDeliveryService.DeliveryConfig(
+                ssMode,
+                ssTtl,
+                JsonCodec.asString(builtinMap, "bind-host", "0.0.0.0"),
+                JsonCodec.asInt(builtinMap, "port", 8765),
+                JsonCodec.asString(builtinMap, "public-url", ""),
+                JsonCodec.asString(uploadMap, "url", ""),
+                JsonCodec.asString(uploadMap, "auth-header", "")
+        );
+        AdminConfig adminCfg = new AdminConfig(hwidSalt, auditDays, deliveryCfg, ssMaxW, ssMaxH, ssQual, ssMaxBytes);
+
+        // Phase 8: voice.*
+        Map<String, Object> voiceMap = JsonCodec.asObject(root, "voice");
+        VoiceConfig voiceCfg = new VoiceConfig(
+                JsonCodec.asString(voiceMap, "mode", "auto").toLowerCase(Locale.ROOT),
+                voiceMap.containsKey("max-distance")
+                        ? (voiceMap.get("max-distance") instanceof Number n ? n.doubleValue() : null)
+                        : 48.0,
+                voiceMap.containsKey("whisper-distance")
+                        ? (voiceMap.get("whisper-distance") instanceof Number n ? n.doubleValue() : null)
+                        : 16.0,
+                voiceMap.containsKey("falloff-mode")
+                        ? JsonCodec.asNullableString(voiceMap, "falloff-mode")
+                        : "natural",
+                voiceMap.containsKey("falloff-factor")
+                        ? (voiceMap.get("falloff-factor") instanceof Number n ? n.doubleValue() : null)
+                        : 1.0,
+                voiceMap.containsKey("allow-groups")
+                        ? (voiceMap.get("allow-groups") instanceof Boolean b ? b : null)
+                        : Boolean.TRUE,
+                JsonCodec.asBoolean(voiceMap, "recording-allowed", false)
+        );
+
         return new HaikyoConfig(
                 language,
                 role,
@@ -231,7 +360,9 @@ public record HaikyoConfig(
                 useInputTelemetry,
                 checkTable,
                 genericEnabled,
-                List.copyOf(genericPatterns)
+                List.copyOf(genericPatterns),
+                adminCfg,
+                voiceCfg
         );
     }
 }

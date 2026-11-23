@@ -30,9 +30,11 @@ public final class HaikyoChannels {
     public static final String MODS = "haikyo:mods";
     public static final String MOD_PREFIX = "haikyo:mod/";
     public static final String AC = "haikyo:ac";
+    public static final String ADMIN = "haikyo:admin";
+    public static final String VOICE = "haikyo:voice";
     public static final String LINK = "haikyo:link";
 
-    public static final List<String> CORE_CHANNELS = List.of(CONTROL, ATTEST, MODS, AC);
+    public static final List<String> CORE_CHANNELS = List.of(CONTROL, ATTEST, MODS, AC, ADMIN, VOICE);
 
     // Wire framing constants
     public static final byte MAGIC_0 = 'H';
@@ -67,6 +69,15 @@ public final class HaikyoChannels {
 
     // haikyo:ac packet types
     public static final int PKT_AC_INPUTS = 0x01;
+
+    // haikyo:admin packet types
+    public static final int PKT_ADMIN_REQUEST = 0x01;
+    public static final int PKT_ADMIN_INFO_RESPONSE = 0x02;
+    public static final int PKT_ADMIN_HWID_RESPONSE = 0x03;
+    public static final int PKT_ADMIN_SCREENSHOT_RESPONSE = 0x04;
+
+    // haikyo:voice packet types
+    public static final int PKT_VOICE_CONFIG = 0x01;
 
     // haikyo:link packet types (proxy <-> backend)
     public static final int PKT_LINK_SESSION = 0x01;

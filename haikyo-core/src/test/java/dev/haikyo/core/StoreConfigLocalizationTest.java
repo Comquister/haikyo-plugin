@@ -76,9 +76,14 @@ class StoreConfigLocalizationTest {
         Localization loc = Localization.loadDefault("pt_br");
         List<String> keys = List.of(
                 "prefix", "command.no_permission", "command.usage", "command.status.header",
+                "command.not_haikyo", "command.info.usage", "command.info.pending", "command.info.result", "command.info.error",
+                "command.hwid.usage", "command.hwid.pending", "command.hwid.result", "command.hwid.error",
+                "command.screenshot.usage", "command.screenshot.pending", "command.screenshot.ready", "command.screenshot.error",
+                "command.voice.usage", "command.voice.muted", "command.voice.unmuted",
                 "command.pardon.success", "command.suspect.success", "command.reload.success",
                 "kick.require_haikyo", "kick.require_haikyo_flagged", "kick.attestation_failed",
-                "log.proxy_fallback_no_secret", "log.proxy_fallback_bad_hmac"
+                "log.proxy_fallback_no_secret", "log.proxy_fallback_bad_hmac",
+                "log.voice_hooked", "log.voice_unavailable"
         );
         for (String lang : Localization.SUPPORTED_LOCALES) {
             for (String key : keys) {

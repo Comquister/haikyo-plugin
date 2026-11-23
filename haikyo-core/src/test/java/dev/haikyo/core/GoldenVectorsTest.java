@@ -22,6 +22,7 @@ import dev.haikyo.core.crypto.AttestationToken;
 import dev.haikyo.core.crypto.AttestationVerifier;
 import dev.haikyo.core.crypto.HaikyoLinkCodec;
 import dev.haikyo.core.crypto.ServerAddressNormalizer;
+import dev.haikyo.core.crypto.SignedRulesVerifier;
 import dev.haikyo.core.protocol.FragmentReassembler;
 import dev.haikyo.core.protocol.HaikyoChannels;
 import dev.haikyo.core.protocol.ProtocolMessages;
@@ -299,5 +300,105 @@ class GoldenVectorsTest {
         FragmentReassembler.Complete boundaryComplete = assertInstanceOf(FragmentReassembler.Complete.class, last);
         assertEquals(33000, boundaryComplete.packet().body().length);
         assertEquals(JsonCodec.asString(boundary, "payload_sha256_hex", ""), Hex.encode(WireFrame.sha256(boundaryComplete.packet().body())));
+    }
+
+    @Test
+    void adminVoiceAndSignedRulesMatchGoldenVectors() {
+        // 1. haikyo:admin requests & responses
+        Map<String, Object> admin = JsonCodec.asObject(vectors, "admin");
+        for (String reqKey : List.of("admin_request_info", "admin_request_hwid", "admin_request_screenshot")) {
+            Map<String, Object> rv = JsonCodec.asObject(admin, reqKey);
+            byte[] frame = Hex.decode(JsonCodec.asString(rv, "frame_hex", ""));
+            var ok = assertInstanceOf(WireFrame.DecodeOk.class, WireFrame.decode(frame, HaikyoChannels.MAX_S2C_WIRE_BYTES));
+            ProtocolMessages.AdminRequest decoded = ProtocolMessages.AdminRequest.decodeJson(ok.frame().payload());
+            byte[] reencoded = WireFrame.encodeUnfragmented(HaikyoChannels.PKT_ADMIN_REQUEST, decoded.encodeJson());
+            assertEquals(JsonCodec.asString(rv, "frame_hex", ""), Hex.encode(reencoded));
+        }
+
+        // admin_info_response
+        Map<String, Object> infoVec = JsonCodec.asObject(admin, "admin_info_response");
+        var infoOk = assertInstanceOf(WireFrame.DecodeOk.class, WireFrame.decode(Hex.decode(JsonCodec.asString(infoVec, "frame_hex", "")), HaikyoChannels.MAX_C2S_WIRE_BYTES));
+        var infoResp = ProtocolMessages.AdminInfoResponse.decodeJson(infoOk.frame().payload());
+        assertEquals("req-info-01", infoResp.requestId());
+        assertEquals("Windows 11", infoResp.os());
+        assertEquals(32768L, infoResp.ramMb());
+        assertEquals(List.of("zoom", "waypoints"), infoResp.mods());
+        assertEquals(JsonCodec.asString(infoVec, "frame_hex", ""), Hex.encode(WireFrame.encodeUnfragmented(HaikyoChannels.PKT_ADMIN_INFO_RESPONSE, infoResp.encodeJson())));
+
+        // admin_hwid_response
+        Map<String, Object> hwidVec = JsonCodec.asObject(admin, "admin_hwid_response");
+        var hwidOk = assertInstanceOf(WireFrame.DecodeOk.class, WireFrame.decode(Hex.decode(JsonCodec.asString(hwidVec, "frame_hex", "")), HaikyoChannels.MAX_C2S_WIRE_BYTES));
+        var hwidResp = ProtocolMessages.AdminHwidResponse.decodeJson(hwidOk.frame().payload());
+        assertEquals("req-hwid-01", hwidResp.requestId());
+        assertEquals(64, hwidResp.hwid().length());
+
+        // admin_screenshot_response_ok (single & 4-fragment reassembly!)
+        Map<String, Object> shotOkVec = JsonCodec.asObject(admin, "admin_screenshot_response_ok");
+        byte[] shotBody = Hex.decode(JsonCodec.asString(shotOkVec, "body_hex", ""));
+        var shot = ProtocolMessages.AdminScreenshotResponse.decodeBinary(shotBody);
+        assertEquals("req-shot-01", shot.requestId());
+        assertEquals(ProtocolMessages.AdminScreenshotResponse.STATUS_OK, shot.status());
+        assertEquals(640, shot.width());
+        assertEquals(360, shot.height());
+        assertEquals("image/jpeg", shot.mimeType());
+        assertEquals(192, shot.imageBytes().length);
+        assertEquals(JsonCodec.asString(shotOkVec, "body_hex", ""), Hex.encode(shot.encodeBinary()));
+
+        Map<String, Object> fragShot = JsonCodec.asObject(shotOkVec, "fragmented");
+        int fragMaxWire = JsonCodec.asInt(fragShot, "max_wire_bytes", 120);
+        FragmentReassembler shotReasm = new FragmentReassembler();
+        FragmentReassembler.Result last = null;
+        for (String fHex : JsonCodec.asStringList(fragShot, "frames_hex")) {
+            last = shotReasm.accept(Hex.decode(fHex), fragMaxWire, refNow);
+        }
+        var reasmShot = assertInstanceOf(FragmentReassembler.Complete.class, last);
+        assertArrayEquals(shotBody, reasmShot.packet().body());
+
+        // admin_screenshot_response_declined
+        Map<String, Object> shotDecVec = JsonCodec.asObject(admin, "admin_screenshot_response_declined");
+        var shotDec = ProtocolMessages.AdminScreenshotResponse.decodeBinary(Hex.decode(JsonCodec.asString(shotDecVec, "body_hex", "")));
+        assertEquals(ProtocolMessages.AdminScreenshotResponse.STATUS_CONSENT_DECLINED, shotDec.status());
+        assertEquals("consent_declined", shotDec.error());
+        assertEquals(0, shotDec.imageBytes().length);
+
+        // 2. haikyo:voice configs
+        Map<String, Object> voice = JsonCodec.asObject(vectors, "voice");
+        for (String vKey : List.of("voice_config_override", "voice_config_muted")) {
+            Map<String, Object> vv = JsonCodec.asObject(voice, vKey);
+            var vOk = assertInstanceOf(WireFrame.DecodeOk.class, WireFrame.decode(Hex.decode(JsonCodec.asString(vv, "frame_hex", "")), HaikyoChannels.MAX_S2C_WIRE_BYTES));
+            var vMsg = ProtocolMessages.VoiceConfigMessage.decodeJson(vOk.frame().payload());
+            byte[] reencoded = WireFrame.encodeUnfragmented(HaikyoChannels.PKT_VOICE_CONFIG, vMsg.encodeJson());
+            assertEquals(JsonCodec.asString(vv, "frame_hex", ""), Hex.encode(reencoded));
+        }
+
+        // 3. HKRL\x01 signed rules package
+        Map<String, Object> keys = JsonCodec.asObject(vectors, "test_keys");
+        Map<String, Object> primary = JsonCodec.asObject(keys, "attest_primary");
+        Map<String, Object> rotated = JsonCodec.asObject(keys, "attest_rotated");
+        SignedRulesVerifier rulesVerifier = SignedRulesVerifier.fromBase64Keys(Map.of(
+                JsonCodec.asString(primary, "key_id", ""), JsonCodec.asString(primary, "public_raw_b64", ""),
+                JsonCodec.asString(rotated, "key_id", ""), JsonCodec.asString(rotated, "public_spki_der_b64", "")
+        ));
+
+        Map<String, Object> sr = JsonCodec.asObject(vectors, "signed_rules");
+        var validSr = rulesVerifier.verifyEnvelopeJson(JsonCodec.stringify(JsonCodec.asObject(JsonCodec.asObject(sr, "valid"), "envelope")), refNow);
+        assertTrue(validSr.valid(), "Valid signed rules must pass: " + validSr.detail());
+        assertTrue(validSr.rules().allowedModules().contains("discordhook64.dll"));
+        assertTrue(validSr.rules().revokedVersions().contains("v2026.10.01"));
+
+        var rotSr = rulesVerifier.verifyEnvelopeJson(JsonCodec.stringify(JsonCodec.asObject(JsonCodec.asObject(sr, "rotated_key"), "envelope")), refNow);
+        assertTrue(rotSr.valid(), "Rotated-key signed rules must pass: " + rotSr.detail());
+
+        var expSr = rulesVerifier.verifyEnvelopeJson(JsonCodec.stringify(JsonCodec.asObject(JsonCodec.asObject(sr, "expired"), "envelope")), refNow);
+        assertFalse(expSr.valid());
+        assertEquals(SignedRulesVerifier.FailureCode.EXPIRED, expSr.failureCode());
+
+        var tpSr = rulesVerifier.verifyEnvelopeJson(JsonCodec.stringify(JsonCodec.asObject(JsonCodec.asObject(sr, "tampered_payload"), "envelope")), refNow);
+        assertFalse(tpSr.valid());
+        assertEquals(SignedRulesVerifier.FailureCode.INVALID_SIGNATURE, tpSr.failureCode());
+
+        var tsSr = rulesVerifier.verifyEnvelopeJson(JsonCodec.stringify(JsonCodec.asObject(JsonCodec.asObject(sr, "tampered_signature"), "envelope")), refNow);
+        assertFalse(tsSr.valid());
+        assertEquals(SignedRulesVerifier.FailureCode.INVALID_SIGNATURE, tsSr.failureCode());
     }
 }

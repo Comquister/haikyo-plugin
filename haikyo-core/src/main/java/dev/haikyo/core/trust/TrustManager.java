@@ -25,6 +25,7 @@ import dev.haikyo.api.PlayerSession;
 import dev.haikyo.api.TrustChangeEvent;
 import dev.haikyo.api.TrustChangeListener;
 import dev.haikyo.api.TrustLevel;
+import dev.haikyo.core.admin.AdminRequestManager;
 import dev.haikyo.core.config.HaikyoConfig;
 import dev.haikyo.core.crypto.AttestationVerifier;
 import dev.haikyo.core.crypto.HaikyoLinkCodec;
@@ -35,6 +36,7 @@ import dev.haikyo.core.protocol.ProtocolMessages;
 import dev.haikyo.core.protocol.WireFrame;
 import dev.haikyo.core.store.RequiresHaikyoStore;
 import dev.haikyo.core.util.Hex;
+import dev.haikyo.core.voice.VoiceModerationManager;
 
 import java.security.SecureRandom;
 import java.time.Clock;
@@ -107,6 +109,8 @@ public final class TrustManager implements HaikyoApi {
     private final PlayerKicker playerKicker;
     private final ModChannelHook modChannelHook;
     private final String pluginVersion;
+    private final AdminRequestManager adminRequestManager;
+    private final VoiceModerationManager voiceModerationManager;
 
     private volatile HaikyoConfig config;
     private volatile ServerRole effectiveRole;
@@ -139,7 +143,17 @@ public final class TrustManager implements HaikyoApi {
         this.playerKicker = playerKicker == null ? (p, k, d) -> { } : playerKicker;
         this.modChannelHook = modChannelHook == null ? (c, r) -> { } : modChannelHook;
         this.pluginVersion = pluginVersion == null ? "0.1.0" : pluginVersion;
+        this.adminRequestManager = new AdminRequestManager(this.clock);
+        this.voiceModerationManager = new VoiceModerationManager(this.clock);
         reloadConfig(config, effectiveRole);
+    }
+
+    public AdminRequestManager adminRequests() {
+        return adminRequestManager;
+    }
+
+    public VoiceModerationManager voiceModeration() {
+        return voiceModerationManager;
     }
 
     public void reloadConfig(HaikyoConfig newConfig, ServerRole newEffectiveRole) {
@@ -311,6 +325,7 @@ public final class TrustManager implements HaikyoApi {
 
     public void onPlayerQuit(UUID playerId) {
         sessions.remove(playerId);
+        voiceModerationManager.clearPlayer(playerId);
     }
 
     /**
@@ -324,6 +339,8 @@ public final class TrustManager implements HaikyoApi {
         if (effectiveRole != ServerRole.PROXY) {
             channels.put("mods", HaikyoChannels.PROTOCOL_VERSION);
             channels.put("ac", HaikyoChannels.PROTOCOL_VERSION);
+            channels.put("admin", HaikyoChannels.PROTOCOL_VERSION);
+            channels.put("voice", HaikyoChannels.PROTOCOL_VERSION);
         }
         ProtocolMessages.Hello hello = new ProtocolMessages.Hello(
                 HaikyoChannels.PROTOCOL_VERSION,
@@ -345,6 +362,90 @@ public final class TrustManager implements HaikyoApi {
             return false;
         }
         return packetSender.send(playerId, HaikyoChannels.MODS, modRuleEngine.encodeRulesFrame());
+    }
+
+    public boolean sendVoiceConfig(UUID playerId) {
+        if (effectiveRole == ServerRole.PROXY) {
+            return false;
+        }
+        MutableSession s = sessions.get(playerId);
+        if (s == null || !s.haikyoClient) {
+            return false;
+        }
+        byte[] frame = voiceModerationManager.encodeConfigFrame(playerId, config.voice());
+        return packetSender.send(playerId, HaikyoChannels.VOICE, frame);
+    }
+
+    public Optional<String> sendAdminInfoRequest(
+            UUID playerId,
+            String targetName,
+            String actorName,
+            Consumer<ProtocolMessages.AdminInfoResponse> onReply
+    ) {
+        return sendAdminRequestInternal(playerId, targetName, actorName, "info", obj -> {
+            if (obj instanceof ProtocolMessages.AdminInfoResponse resp && onReply != null) {
+                onReply.accept(resp);
+            }
+        });
+    }
+
+    public Optional<String> sendAdminHwidRequest(
+            UUID playerId,
+            String targetName,
+            String actorName,
+            Consumer<ProtocolMessages.AdminHwidResponse> onReply
+    ) {
+        return sendAdminRequestInternal(playerId, targetName, actorName, "hwid", obj -> {
+            if (obj instanceof ProtocolMessages.AdminHwidResponse resp && onReply != null) {
+                onReply.accept(resp);
+            }
+        });
+    }
+
+    public Optional<String> sendAdminScreenshotRequest(
+            UUID playerId,
+            String targetName,
+            String actorName,
+            Consumer<ProtocolMessages.AdminScreenshotResponse> onReply
+    ) {
+        return sendAdminRequestInternal(playerId, targetName, actorName, "screenshot", obj -> {
+            if (obj instanceof ProtocolMessages.AdminScreenshotResponse resp && onReply != null) {
+                onReply.accept(resp);
+            }
+        });
+    }
+
+    private Optional<String> sendAdminRequestInternal(
+            UUID playerId,
+            String targetName,
+            String actorName,
+            String kind,
+            Consumer<Object> callback
+    ) {
+        MutableSession s = sessions.get(playerId);
+        if (s == null || !s.haikyoClient) {
+            return Optional.empty();
+        }
+        HaikyoConfig cfg = this.config;
+        HaikyoConfig.AdminConfig ac = cfg.admin();
+        String salt = (ac.hwidSalt() == null || ac.hwidSalt().isBlank()) ? cfg.serverId() : ac.hwidSalt();
+        AdminRequestManager.PendingRequest pending = adminRequestManager.createRequest(
+                kind, playerId, targetName, actorName, callback
+        );
+        ProtocolMessages.AdminRequest req = "screenshot".equals(kind)
+                ? new ProtocolMessages.AdminRequest(
+                        pending.requestId(), kind, null,
+                        ac.screenshotMaxWidth(), ac.screenshotMaxHeight(),
+                        ac.screenshotJpegQuality(), ac.screenshotMaxBytes())
+                : new ProtocolMessages.AdminRequest(
+                        pending.requestId(), kind, salt,
+                        null, null, null, null);
+        byte[] frame = WireFrame.encodeUnfragmented(HaikyoChannels.PKT_ADMIN_REQUEST, req.encodeJson());
+        if (!packetSender.send(playerId, HaikyoChannels.ADMIN, frame)) {
+            adminRequestManager.complete(pending.requestId(), playerId, kind);
+            return Optional.empty();
+        }
+        return Optional.of(pending.requestId());
     }
 
     /**
@@ -504,6 +605,8 @@ public final class TrustManager implements HaikyoApi {
                 }
             } else if (HaikyoChannels.AC.equals(channel) && pkt.packetType() == HaikyoChannels.PKT_AC_INPUTS) {
                 handleAcInputs(s, pkt.body());
+            } else if (HaikyoChannels.ADMIN.equals(channel)) {
+                handleAdminResponse(playerId, pkt.packetType(), pkt.body());
             } else if (channel.startsWith(HaikyoChannels.MOD_PREFIX) && pkt.packetType() == HaikyoChannels.PKT_MOD_OPAQUE) {
                 String modId = HaikyoChannels.extractModId(channel);
                 if (modId != null) {
@@ -546,6 +649,9 @@ public final class TrustManager implements HaikyoApi {
         }
         if (effectiveRole != ServerRole.PROXY) {
             sendModRules(s.playerId);
+            if (!"off".equals(voiceModerationManager.effectiveMode(config.voice()))) {
+                sendVoiceConfig(s.playerId);
+            }
         }
         if (shouldChallenge) {
             issueAttestChallenge(s.playerId);
@@ -660,6 +766,34 @@ public final class TrustManager implements HaikyoApi {
             }
         } catch (SecurityException e) {
             transitionToSuspect(s, "", "invalid_ac_hmac", "haikyo:ac HMAC verification failed");
+        }
+    }
+
+    private void handleAdminResponse(UUID playerId, int packetType, byte[] body) {
+        if (packetType == HaikyoChannels.PKT_ADMIN_INFO_RESPONSE) {
+            ProtocolMessages.AdminInfoResponse resp = ProtocolMessages.AdminInfoResponse.decodeJson(body);
+            adminRequestManager.complete(resp.requestId(), playerId, "info")
+                    .ifPresent(req -> {
+                        if (req.callback() != null) {
+                            req.callback().accept(resp);
+                        }
+                    });
+        } else if (packetType == HaikyoChannels.PKT_ADMIN_HWID_RESPONSE) {
+            ProtocolMessages.AdminHwidResponse resp = ProtocolMessages.AdminHwidResponse.decodeJson(body);
+            adminRequestManager.complete(resp.requestId(), playerId, "hwid")
+                    .ifPresent(req -> {
+                        if (req.callback() != null) {
+                            req.callback().accept(resp);
+                        }
+                    });
+        } else if (packetType == HaikyoChannels.PKT_ADMIN_SCREENSHOT_RESPONSE) {
+            ProtocolMessages.AdminScreenshotResponse resp = ProtocolMessages.AdminScreenshotResponse.decodeBinary(body);
+            adminRequestManager.complete(resp.requestId(), playerId, "screenshot")
+                    .ifPresent(req -> {
+                        if (req.callback() != null) {
+                            req.callback().accept(resp);
+                        }
+                    });
         }
     }
 

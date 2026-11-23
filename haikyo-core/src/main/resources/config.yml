@@ -119,3 +119,45 @@ anticheat:
     enabled: false
     # Command prefixes dispatched by a third-party anticheat that should be filtered when check is relaxed.
     command-patterns: []
+
+# Administrative commands (haikyo:admin): /haikyo info, hwid, screenshot.
+admin:
+  # Per-server salt mixed into the client's SHA-256 HWID (defaults to server-id when empty).
+  # Different servers always observe different HWIDs for the same PC.
+  hwid-salt: ""
+  # Retention window for plugins/Haikyo/audit.log (stores who/whom/when only — NEVER images).
+  audit-retention-days: 30
+  screenshot:
+    # Delivery mode: builtin | upload | file
+    # - builtin: embedded HTTP server serving /haikyo/s/<128-bit-token> for ttl-seconds (auto-deletes on expiry).
+    #   Automatically falls back to 'file' if builtin.public-url is blank.
+    # - upload: HTTP PUT to your own endpoint (e.g. S3 or custom uploader).
+    # - file: saves to plugins/Haikyo/screens/<token>.jpg and deletes on expiry.
+    delivery: builtin
+    ttl-seconds: 3600
+    max-width: 1280
+    max-height: 720
+    jpeg-quality: 75
+    max-bytes: 1048576
+    builtin:
+      bind-host: "0.0.0.0"
+      port: 8765
+      # Example: "https://screens.example.com:8765" — leave empty to fall back safely to 'file' mode.
+      public-url: ""
+    upload:
+      # Example: "https://storage.example.com/haikyo/{token}.jpg"
+      url: ""
+      auth-header: ""
+
+# Voice chat integration (Phase 8 Mode A: Simple Voice Chat + haikyo:voice extras).
+# Audio continues over SVC UDP; this plugin NEVER records audio by default.
+voice:
+  # Mode: auto | svc | off
+  mode: auto
+  max-distance: 48.0
+  whisper-distance: 16.0
+  # Attenuation curve: natural | linear | inverse | exponential
+  falloff-mode: natural
+  falloff-factor: 1.0
+  allow-groups: true
+  recording-allowed: false
