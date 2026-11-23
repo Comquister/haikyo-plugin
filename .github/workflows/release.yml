@@ -59,7 +59,7 @@ jobs:
       - name: Clone PumpkinMC Upstream
         run: |
           mkdir -p ../../work
-          git clone --depth 1 https://github.com/Pumpkin-MC/Pumpkin.git ../../work/pumpkin-repo
+          git clone --depth 1 https://github.com/Pumpkin-MC/Pumpkin.git ${{ github.workspace }}/../work/pumpkin-repo
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -93,7 +93,7 @@ jobs:
       - name: Clone PumpkinMC Upstream
         run: |
           mkdir -p ../../work
-          git clone --depth 1 https://github.com/Pumpkin-MC/Pumpkin.git ../../work/pumpkin-repo
+          git clone --depth 1 https://github.com/Pumpkin-MC/Pumpkin.git ${{ github.workspace }}/../work/pumpkin-repo
 
       - name: Install Rust toolchain & wasm target
         uses: dtolnay/rust-toolchain@stable
