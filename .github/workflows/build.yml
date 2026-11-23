@@ -32,5 +32,6 @@ jobs:
           path: |
             haikyo-paper/build/libs/haikyo-paper-*.jar
             haikyo-velocity/build/libs/haikyo-velocity-*.jar
+            haikyo-fabric/build/libs/haikyo-fabric-*.jar
             haikyo-api/build/libs/haikyo-api-*.jar
             !**/build/libs/*-sources.jar
