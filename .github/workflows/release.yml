@@ -1,0 +1,107 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-java:
+    name: Build Java Plugins & Mods
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build and run tests
+        run: ./gradlew build --stacktrace
+
+      - name: Upload Java JARs
+        uses: actions/upload-artifact@v4
+        with:
+          name: java-jars
+          path: |
+            haikyo-paper/build/libs/haikyo-paper-*.jar
+            haikyo-velocity/build/libs/haikyo-velocity-*.jar
+            haikyo-fabric/build/libs/haikyo-fabric-*.jar
+            haikyo-api/build/libs/haikyo-api-*.jar
+            !**/build/libs/*-sources.jar
+
+  build-pumpkin-native:
+    name: Build Pumpkin Native (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact: libhaikyo_pumpkin.so
+            output_name: haikyo-pumpkin-linux.so
+          - os: windows-latest
+            artifact: haikyo_pumpkin.dll
+            output_name: haikyo-pumpkin-windows.dll
+          - os: macos-latest
+            artifact: libhaikyo_pumpkin.dylib
+            output_name: haikyo-pumpkin-macos.dylib
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Clone PumpkinMC Upstream
+        run: git clone --depth 1 https://github.com/Pumpkin-MC/Pumpkin.git ../pumpkin
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Test haikyo-pumpkin
+        run: cargo test
+        working-directory: haikyo-pumpkin
+
+      - name: Build Release haikyo-pumpkin
+        run: cargo build --release
+        working-directory: haikyo-pumpkin
+
+      - name: Rename artifact
+        shell: bash
+        run: cp haikyo-pumpkin/target/release/${{ matrix.artifact }} ./${{ matrix.output_name }}
+
+      - name: Upload Native Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pumpkin-native-${{ matrix.os }}
+          path: ${{ matrix.output_name }}
+
+  publish-release:
+    name: Publish GitHub Release
+    needs: [build-java, build-pumpkin-native]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: List Release Files
+        run: ls -la release-assets
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release-assets/*
+          generate_release_notes: true
