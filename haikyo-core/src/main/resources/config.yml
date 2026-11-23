@@ -1,0 +1,121 @@
+# =============================================================================
+# Haikyo Server Plugin Configuration
+# License: GNU GPL-3.0-or-later
+# =============================================================================
+
+# Default plugin language: en_us | pt_br | es_es
+language: en_us
+
+# Server role: auto | standalone | backend | proxy
+# - auto: Paper/Folia auto-detects Velocity forwarding (falls back to standalone
+#   if link.shared-secret is missing or invalid). Velocity defaults to proxy.
+role: auto
+
+# Canonical public address of this server or network (e.g. play.example.com:25565).
+# Leave empty to accept any server address signed in the attestation token.
+server-address: ""
+
+# Unique identifier advertised to clients in haikyo:control hello (defaults to server-address or "default").
+server-id: "haikyo-server"
+
+# Download link shown to players when kicked by require-haikyo or failed attestation.
+download-url: "https://haikyo.conquister.net"
+
+# Require ALL players to join using an attested Haikyo Client.
+# When false, vanilla and non-Haikyo clients play normally with full anticheat checks,
+# while players listed in requires-haikyo.json still require attested Haikyo.
+require-haikyo: false
+
+# Seconds to wait for handshake + attestation before kicking when Haikyo is required.
+attestation-timeout-seconds: 15
+
+# Consent scopes requested from the client on first join.
+# Supported: version, integrity, mods, inputs
+consent-scopes:
+  - version
+  - integrity
+  - mods
+  - inputs
+
+# Attestation verification settings (Ed25519 public keys only — NEVER private keys).
+attestation:
+  # Map of key_id -> Base64 raw 32-byte or X.509 SPKI DER Ed25519 public key.
+  # Server owners can add rotated keys without downtime.
+  public-keys: {}
+  # Client versions explicitly rejected by this server (e.g. ["v2026.10.01"]).
+  revoked-versions: []
+  # Mark players as SUSPECT if client reports Agent Control (--control) enabled.
+  require-no-agent: true
+  # Randomized integrity report window (seconds) advertised to the client.
+  report-interval-min-seconds: 15
+  report-interval-max-seconds: 45
+
+# Proxy <-> Backend authenticated session link (haikyo:link, HMAC-SHA256).
+# Both Velocity (role: proxy) and Paper/Folia (role: backend) must share this secret.
+# If empty on a backend, the plugin logs a warning and safely falls back to standalone.
+link:
+  shared-secret: ""
+  session-ttl-seconds: 60
+
+# Server-side mod rules enforced by Haikyo clients and audited in integrity reports.
+# Actions: allow | limit | block
+# Arbitrary parameters under 'params' are declared by each mod (e.g. zoom.max_factor).
+mods:
+  rules:
+    zoom:
+      action: allow
+      params: {}
+      reason: ""
+  # Example server-enhanced optional mod (haikyo:mod/waypoints, cap waypoints@1).
+  waypoints:
+    enabled: false
+    markers: []
+    # Example marker:
+    # - id: spawn
+    #   name: Spawn
+    #   world: minecraft:overworld
+    #   x: 0.0
+    #   y: 64.0
+    #   z: 0.0
+    #   color: "#FF6B35"
+
+# Integrated anticheat trust & check relaxation settings.
+anticheat:
+  # Fraction of ATTESTED players that still run ALL checks unrelaxed (default 0.05 = 5%).
+  sampling-fraction: 0.05
+  # Promote players marked SUSPECT via /haikyo suspect or repeated always-check flags into requires-haikyo.json.
+  promote-suspect-to-require: true
+  # Whether to verify haikyo:ac gameplay input ticks to corroborate relaxed flags.
+  use-input-telemetry: true
+  # Per-anticheat check classification: always | relaxed
+  # Unknown checks ALWAYS default to 'always' (fail-safe).
+  checks:
+    grim:
+      simulation: relaxed
+      "aim*": relaxed
+      "post*": relaxed
+      groundspoof: relaxed
+      reach: always
+      timer: always
+      "badpackets*": always
+      "fly*": always
+      "speed*": always
+    vulcan:
+      "aim*": relaxed
+      "strafe*": relaxed
+      "groundspoof*": relaxed
+      "reach*": always
+      "flight*": always
+      "speed*": always
+      "timer*": always
+      "badpackets*": always
+    generic:
+      "aim*": relaxed
+      "simulation*": relaxed
+      "reach*": always
+      "fly*": always
+      "speed*": always
+  generic-adapter:
+    enabled: false
+    # Command prefixes dispatched by a third-party anticheat that should be filtered when check is relaxed.
+    command-patterns: []
