@@ -32,7 +32,7 @@ fn default_link_shared_secret() -> String {
 }
 
 fn default_publish_requires_to_proxy() -> bool {
-    true
+    false
 }
 
 fn default_server_role() -> String {

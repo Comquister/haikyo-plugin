@@ -66,33 +66,24 @@ link:
 # Server-side mod rules enforced by Haikyo clients and audited in integrity reports.
 # Actions: allow | limit | block
 # Arbitrary parameters under 'params' are declared by each mod (e.g. zoom.max_factor).
+# By default, empty rules so server owners manually define their mod policies.
 mods:
-  rules:
-    zoom:
-      action: allow
-      params: {}
-      reason: ""
+  rules: {}
   # Example server-enhanced optional mod (haikyo:mod/waypoints, cap waypoints@1).
   waypoints:
     enabled: false
     markers: []
-    # Example marker:
-    # - id: spawn
-    #   name: Spawn
-    #   world: minecraft:overworld
-    #   x: 0.0
-    #   y: 64.0
-    #   z: 0.0
-    #   color: "#FF6B35"
 
 # Integrated anticheat trust & check relaxation settings.
 anticheat:
+  # Whether check relaxation is enabled. Set false by default: owners must manually enable anticheat relaxation.
+  enable-relaxation: false
   # Fraction of ATTESTED players that still run ALL checks unrelaxed (default 0.05 = 5%).
   sampling-fraction: 0.05
   # Promote players marked SUSPECT via /haikyo suspect or repeated always-check flags into requires-haikyo.json.
-  promote-suspect-to-require: true
+  promote-suspect-to-require: false
   # Whether to verify haikyo:ac gameplay input ticks to corroborate relaxed flags.
-  use-input-telemetry: true
+  use-input-telemetry: false
   # Per-anticheat check classification: always | relaxed
   # Unknown checks ALWAYS default to 'always' (fail-safe).
   checks:
@@ -128,18 +119,23 @@ anticheat:
 
 # Administrative commands (haikyo:admin): /haikyo info, hwid, screenshot.
 admin:
+  # Enable admin inspection commands (/haikyo info, hwid, screenshot).
+  # Disabled by default: owner must manually enable.
+  enabled: false
   # Per-server salt mixed into the client's SHA-256 HWID (defaults to server-id when empty).
   # Different servers always observe different HWIDs for the same PC.
   hwid-salt: ""
   # Retention window for plugins/Haikyo/audit.log (stores who/whom/when only — NEVER images).
   audit-retention-days: 30
   screenshot:
+    # Whether the screenshot service is enabled. Disabled by default.
+    enabled: false
     # Delivery mode: builtin | upload | file
     # - builtin: embedded HTTP server serving /haikyo/s/<128-bit-token> for ttl-seconds (auto-deletes on expiry).
     #   Automatically falls back to 'file' if builtin.public-url is blank.
     # - upload: HTTP PUT to your own endpoint (e.g. S3 or custom uploader).
     # - file: saves to plugins/Haikyo/screens/<token>.jpg and deletes on expiry.
-    delivery: builtin
+    delivery: file
     ttl-seconds: 3600
     max-width: 1280
     max-height: 720
@@ -157,8 +153,8 @@ admin:
 
 # Voice chat integration (Phase 8 Mode A: Simple Voice Chat + haikyo:voice extras).
 # Audio continues over SVC UDP; this plugin NEVER records audio by default.
+# Mode: auto | svc | off. In 'auto', it activates only if Simple Voice Chat is detected on the server.
 voice:
-  # Mode: auto | svc | off
   mode: auto
   max-distance: 48.0
   whisper-distance: 16.0
