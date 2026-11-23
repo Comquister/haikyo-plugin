@@ -82,6 +82,7 @@ public final class HaikyoChannels {
     // haikyo:link packet types (proxy <-> backend)
     public static final int PKT_LINK_SESSION = 0x01;
     public static final int PKT_LINK_REQUEST = 0x02;
+    public static final int PKT_LINK_REQUIRE_SYNC = 0x03;
 
     private HaikyoChannels() {
     }

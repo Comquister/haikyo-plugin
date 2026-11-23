@@ -56,6 +56,11 @@ attestation:
 link:
   shared-secret: ""
   session-ttl-seconds: 60
+  # On backend (Paper/Folia): propagate requires-haikyo promotions (/haikyo suspect, always-check flags)
+  # and /haikyo pardon to the Velocity proxy over signed haikyo:link (0x03). Set false to keep local only.
+  sync-requires-to-proxy: true
+  # On Velocity proxy: accept signed requires-haikyo syncs (0x03) from backend servers.
+  accept-backend-requires-sync: true
 
 # Server-side mod rules enforced by Haikyo clients and audited in integrity reports.
 # Actions: allow | limit | block

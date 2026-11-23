@@ -31,6 +31,8 @@ This file documents all configuration keys supported by `haikyo-paper` (Paper & 
 |---|---|---|---|
 | `link.shared-secret` | string | `""` | Shared HMAC-SHA256 secret between Velocity (`proxy`) and Paper/Folia (`backend`). Must be identical on both sides. If empty or invalid on a backend, the backend rejects forged proxy claims and falls back to `standalone`. |
 | `link.session-ttl-seconds` | int | `60` | Validity duration of signed `haikyo:link` transfer frames. |
+| `link.sync-requires-to-proxy` | boolean | `true` | On backend (Paper/Folia): propagates `requires-haikyo.json` promotions (`/haikyo suspect` and `always`-check anticheat flags) and `/haikyo pardon` to Velocity over signed `haikyo:link` (`0x03`). Set `false` to keep `requires-haikyo.json` strictly local to the backend. |
+| `link.accept-backend-requires-sync` | boolean | `true` | On Velocity (`proxy`): controls whether the proxy accepts signed `haikyo:link` (`0x03`) require/pardon sync frames from backend servers. |
 
 ## Mod Rules (`mods.*`)
 

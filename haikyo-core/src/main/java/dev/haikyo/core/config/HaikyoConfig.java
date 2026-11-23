@@ -58,6 +58,8 @@ public record HaikyoConfig(
         int reportIntervalMaxSeconds,
         String linkSharedSecret,
         int linkSessionTtlSeconds,
+        boolean linkSyncRequiresToProxy,
+        boolean linkAcceptBackendRequiresSync,
         Map<String, ModRule> modRules,
         boolean waypointsEnabled,
         List<WaypointMarker> waypointMarkers,
@@ -104,7 +106,7 @@ public record HaikyoConfig(
                 requireHaikyo, attestationTimeoutSeconds, consentScopes,
                 attestationPublicKeys, revokedVersions, requireNoAgent,
                 reportIntervalMinSeconds, reportIntervalMaxSeconds,
-                linkSharedSecret, linkSessionTtlSeconds, modRules,
+                linkSharedSecret, linkSessionTtlSeconds, true, true, modRules,
                 waypointsEnabled, waypointMarkers, samplingFraction,
                 promoteSuspectToRequire, useInputTelemetry, checkTable,
                 genericAdapterEnabled, genericCommandPatterns,
@@ -222,6 +224,8 @@ public record HaikyoConfig(
         Map<String, Object> linkMap = JsonCodec.asObject(root, "link");
         String sharedSecret = JsonCodec.asString(linkMap, "shared-secret", "");
         int linkTtl = Math.max(10, JsonCodec.asInt(linkMap, "session-ttl-seconds", 60));
+        boolean linkSyncToProxy = JsonCodec.asBoolean(linkMap, "sync-requires-to-proxy", true);
+        boolean linkAcceptBackendSync = JsonCodec.asBoolean(linkMap, "accept-backend-requires-sync", true);
 
         Map<String, Object> modsMap = JsonCodec.asObject(root, "mods");
         Map<String, ModRule> modRules = new LinkedHashMap<>();
@@ -352,6 +356,8 @@ public record HaikyoConfig(
                 reportMax,
                 sharedSecret,
                 linkTtl,
+                linkSyncToProxy,
+                linkAcceptBackendSync,
                 Collections.unmodifiableMap(modRules),
                 wpEnabled,
                 List.copyOf(wpMarkers),

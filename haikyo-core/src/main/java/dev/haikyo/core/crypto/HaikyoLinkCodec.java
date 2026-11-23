@@ -50,9 +50,38 @@ import java.util.UUID;
  */
 public final class HaikyoLinkCodec {
     public static final byte[] MAGIC = {'H', 'K', 'L', 'K'};
+    public static final byte[] REQUIRE_SYNC_MAGIC = {'H', 'K', 'R', 'Q'};
     public static final int FORMAT_VERSION = 1;
     public static final int HMAC_LENGTH = 32;
     public static final long DEFAULT_CLOCK_SKEW_SECONDS = 15L;
+    public static final long REQUIRE_SYNC_FRESHNESS_SECONDS = 60L;
+
+    public static final int ACTION_PARDON = 0;
+    public static final int ACTION_REQUIRE = 1;
+
+    public record RequireSync(
+            boolean require,
+            UUID playerUuid,
+            String playerName,
+            String reason,
+            long issuedAt
+    ) {
+    }
+
+    public record RequireSyncDecodeResult(
+            boolean valid,
+            FailureCode failureCode,
+            String detail,
+            RequireSync sync
+    ) {
+        public static RequireSyncDecodeResult ok(RequireSync sync) {
+            return new RequireSyncDecodeResult(true, null, null, sync);
+        }
+
+        public static RequireSyncDecodeResult fail(FailureCode code, String detail) {
+            return new RequireSyncDecodeResult(false, code, detail, null);
+        }
+    }
 
     public record LinkSession(
             UUID playerUuid,
@@ -222,6 +251,100 @@ public final class HaikyoLinkCodec {
         }
         ByteBuffer buf = ByteBuffer.wrap(body).order(ByteOrder.BIG_ENDIAN);
         return new UUID(buf.getLong(), buf.getLong());
+    }
+
+    /**
+     * Encodes a signed {@code haikyo:link} {@code 0x03} ({@code HKRQ}) backend -> proxy require/pardon sync:
+     * {@code "HKRQ" | ver:u8(1) | action:u8(1=REQUIRE,0=PARDON) | player_uuid:[16] | player_name:lp_str | reason:lp_str | issued_at:i64 || HMAC-SHA256(32B)}.
+     */
+    public static byte[] encodeSignedRequireSync(RequireSync sync, String sharedSecret) {
+        if (sharedSecret == null || sharedSecret.isEmpty()) {
+            throw new IllegalArgumentException("haikyo:link shared secret must not be empty");
+        }
+        ByteArrayOutputStream out = new ByteArrayOutputStream(128);
+        out.writeBytes(REQUIRE_SYNC_MAGIC);
+        out.write(FORMAT_VERSION);
+        out.write(sync.require() ? ACTION_REQUIRE : ACTION_PARDON);
+
+        ByteBuffer uuidBuf = ByteBuffer.allocate(16).order(ByteOrder.BIG_ENDIAN);
+        uuidBuf.putLong(sync.playerUuid().getMostSignificantBits());
+        uuidBuf.putLong(sync.playerUuid().getLeastSignificantBits());
+        out.writeBytes(uuidBuf.array());
+
+        AttestationToken.writeLpStr(out, sync.playerName() == null ? "" : sync.playerName());
+        AttestationToken.writeLpStr(out, sync.reason() == null ? "" : sync.reason());
+
+        ByteBuffer ts = ByteBuffer.allocate(8).order(ByteOrder.BIG_ENDIAN);
+        ts.putLong(sync.issuedAt());
+        out.writeBytes(ts.array());
+
+        byte[] payload = out.toByteArray();
+        byte[] hmac = hmacSha256(sharedSecret.getBytes(StandardCharsets.UTF_8), payload);
+        byte[] body = new byte[payload.length + hmac.length];
+        System.arraycopy(payload, 0, body, 0, payload.length);
+        System.arraycopy(hmac, 0, body, payload.length, hmac.length);
+        return body;
+    }
+
+    /**
+     * Verifies and decodes a {@code haikyo:link} {@code 0x03} ({@code HKRQ}) payload, enforcing
+     * constant-time HMAC-SHA256 and timestamp freshness ({@code |now - issued_at| <= 60s}).
+     */
+    public static RequireSyncDecodeResult verifyAndDecodeRequireSync(
+            byte[] body,
+            String sharedSecret,
+            Instant now
+    ) {
+        if (sharedSecret == null || sharedSecret.isEmpty()) {
+            return RequireSyncDecodeResult.fail(FailureCode.MISSING_SECRET, "haikyo:link shared secret is not configured");
+        }
+        // Minimum: 4(magic) + 1(ver) + 1(action) + 16(uuid) + 2(nameLen) + 2(reasonLen) + 8(issuedAt) + 32(hmac)
+        if (body == null || body.length < 4 + 1 + 1 + 16 + 2 + 2 + 8 + HMAC_LENGTH) {
+            return RequireSyncDecodeResult.fail(FailureCode.MALFORMED_PAYLOAD, "HKRQ payload too short");
+        }
+        int payloadLen = body.length - HMAC_LENGTH;
+        byte[] payload = Arrays.copyOfRange(body, 0, payloadLen);
+        byte[] receivedHmac = Arrays.copyOfRange(body, payloadLen, body.length);
+        byte[] expectedHmac = hmacSha256(sharedSecret.getBytes(StandardCharsets.UTF_8), payload);
+        if (!Hex.constantTimeEquals(receivedHmac, expectedHmac)) {
+            return RequireSyncDecodeResult.fail(FailureCode.INVALID_HMAC, "HKRQ HMAC-SHA256 verification failed");
+        }
+        try {
+            ByteBuffer buf = ByteBuffer.wrap(payload).order(ByteOrder.BIG_ENDIAN);
+            for (byte m : REQUIRE_SYNC_MAGIC) {
+                if (buf.get() != m) {
+                    return RequireSyncDecodeResult.fail(FailureCode.MALFORMED_PAYLOAD, "Invalid HKRQ magic");
+                }
+            }
+            int ver = Byte.toUnsignedInt(buf.get());
+            if (ver != FORMAT_VERSION) {
+                return RequireSyncDecodeResult.fail(FailureCode.MALFORMED_PAYLOAD, "Unsupported HKRQ version: " + ver);
+            }
+            int action = Byte.toUnsignedInt(buf.get());
+            if (action != ACTION_PARDON && action != ACTION_REQUIRE) {
+                return RequireSyncDecodeResult.fail(FailureCode.MALFORMED_PAYLOAD, "Invalid HKRQ action: " + action);
+            }
+            UUID playerUuid = new UUID(buf.getLong(), buf.getLong());
+            String playerName = AttestationToken.readLpStr(buf);
+            String reason = AttestationToken.readLpStr(buf);
+            if (buf.remaining() != 8) {
+                return RequireSyncDecodeResult.fail(FailureCode.MALFORMED_PAYLOAD, "Invalid HKRQ trailing bytes: " + buf.remaining());
+            }
+            long issuedAt = buf.getLong();
+            long skew = Math.abs(now.getEpochSecond() - issuedAt);
+            if (skew > REQUIRE_SYNC_FRESHNESS_SECONDS) {
+                return RequireSyncDecodeResult.fail(FailureCode.SESSION_EXPIRED, "HKRQ timestamp outside freshness window (" + skew + "s)");
+            }
+            return RequireSyncDecodeResult.ok(new RequireSync(
+                    action == ACTION_REQUIRE,
+                    playerUuid,
+                    playerName,
+                    reason,
+                    issuedAt
+            ));
+        } catch (IllegalArgumentException e) {
+            return RequireSyncDecodeResult.fail(FailureCode.MALFORMED_PAYLOAD, e.getMessage());
+        }
     }
 
     public static byte[] hmacSha256(byte[] key, byte[] message) {

@@ -207,16 +207,34 @@ public final class HaikyoVelocityPlugin {
         if (event.getSource() instanceof ServerConnection backendConn && LINK_ID.equals(id)) {
             event.setResult(PluginMessageEvent.ForwardResult.handled());
             WireFrame.DecodeResult decoded = WireFrame.decode(event.getData(), HaikyoChannels.MAX_S2C_WIRE_BYTES);
-            if (decoded instanceof WireFrame.DecodeOk ok
-                    && !ok.frame().fragmented()
-                    && ok.frame().packetType() == HaikyoChannels.PKT_LINK_REQUEST) {
-                try {
-                    UUID requestedUuid = HaikyoLinkCodec.decodeLinkRequest(ok.frame().payload());
-                    if (requestedUuid.equals(backendConn.getPlayer().getUniqueId())) {
-                        trustManager.buildSignedLinkFrame(requestedUuid)
-                                .ifPresent(frame -> backendConn.sendPluginMessage(LINK_ID, frame));
+            if (decoded instanceof WireFrame.DecodeOk ok && !ok.frame().fragmented()) {
+                int pktType = ok.frame().packetType();
+                if (pktType == HaikyoChannels.PKT_LINK_REQUEST) {
+                    try {
+                        UUID requestedUuid = HaikyoLinkCodec.decodeLinkRequest(ok.frame().payload());
+                        if (requestedUuid.equals(backendConn.getPlayer().getUniqueId())) {
+                            trustManager.buildSignedLinkFrame(requestedUuid)
+                                    .ifPresent(frame -> backendConn.sendPluginMessage(LINK_ID, frame));
+                        }
+                    } catch (IllegalArgumentException ignored) {
                     }
-                } catch (IllegalArgumentException ignored) {
+                } else if (pktType == HaikyoChannels.PKT_LINK_REQUIRE_SYNC) {
+                    if (!trustManager.config().linkAcceptBackendRequiresSync()) {
+                        return;
+                    }
+                    HaikyoLinkCodec.RequireSyncDecodeResult res = trustManager.handleIncomingRequireSync(event.getData());
+                    if (res.valid()) {
+                        HaikyoLinkCodec.RequireSync sync = res.sync();
+                        logger.info("Synced backend requires-haikyo {} for {} ({}) from {}: {}",
+                                sync.require() ? "REQUIRE" : "PARDON",
+                                sync.playerName().isEmpty() ? sync.playerUuid() : sync.playerName(),
+                                sync.playerUuid(),
+                                backendConn.getServerInfo().getName(),
+                                sync.reason());
+                    } else {
+                        logger.warn("Rejected backend haikyo:link 0x03 from {}: {} ({})",
+                                backendConn.getServerInfo().getName(), res.failureCode(), res.detail());
+                    }
                 }
             }
         }

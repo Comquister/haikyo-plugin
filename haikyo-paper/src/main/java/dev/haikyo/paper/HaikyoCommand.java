@@ -335,7 +335,7 @@ public final class HaikyoCommand implements CommandExecutor, TabCompleter {
             send(sender, locale, "command.pardon.usage");
             return;
         }
-        Optional<RequiresHaikyoStore.Entry> removed = plugin.trustManager().requiresStore().pardonByNameOrUuid(args[1]);
+        Optional<RequiresHaikyoStore.Entry> removed = plugin.trustManager().pardonPlayer(args[1]);
         if (removed.isPresent()) {
             String label = removed.get().playerName().isEmpty()
                     ? removed.get().playerId().toString()

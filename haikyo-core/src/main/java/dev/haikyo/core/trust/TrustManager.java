@@ -56,6 +56,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.DoubleSupplier;
 
@@ -116,6 +117,7 @@ public final class TrustManager implements HaikyoApi {
     private volatile ServerRole effectiveRole;
     private volatile AttestationVerifier attestationVerifier;
     private volatile ModRuleEngine modRuleEngine;
+    private volatile BiConsumer<UUID, byte[]> backendLinkSyncSender;
 
     private final ConcurrentHashMap<UUID, MutableSession> sessions = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, RegisteredModEndpoint> modEndpoints = new ConcurrentHashMap<>();
@@ -154,6 +156,96 @@ public final class TrustManager implements HaikyoApi {
 
     public VoiceModerationManager voiceModeration() {
         return voiceModerationManager;
+    }
+
+    /**
+     * Sets the backend -> proxy {@code haikyo:link} frame sender ({@code (preferredCarrierUuid, wireFrame)})
+     * used when propagating {@code requires-haikyo} promotions and pardons ({@code 0x03}).
+     */
+    public void setBackendLinkSyncSender(BiConsumer<UUID, byte[]> sender) {
+        this.backendLinkSyncSender = sender;
+    }
+
+    /**
+     * Builds a signed {@code haikyo:link} {@code 0x03} ({@code HKRQ}) frame if this server is a
+     * {@code BACKEND} with {@code link.sync-requires-to-proxy: true} and a non-empty shared secret.
+     */
+    public Optional<byte[]> buildSignedRequireSyncFrame(
+            boolean require,
+            UUID playerId,
+            String playerName,
+            String reason
+    ) {
+        HaikyoConfig cfg = this.config;
+        if (effectiveRole != ServerRole.BACKEND
+                || !cfg.linkSyncRequiresToProxy()
+                || cfg.linkSharedSecret() == null
+                || cfg.linkSharedSecret().isBlank()) {
+            return Optional.empty();
+        }
+        HaikyoLinkCodec.RequireSync sync = new HaikyoLinkCodec.RequireSync(
+                require,
+                playerId,
+                playerName == null ? "" : playerName,
+                reason == null ? "" : reason,
+                clock.instant().getEpochSecond()
+        );
+        byte[] body = HaikyoLinkCodec.encodeSignedRequireSync(sync, cfg.linkSharedSecret());
+        return Optional.of(WireFrame.encodeUnfragmented(HaikyoChannels.PKT_LINK_REQUIRE_SYNC, body));
+    }
+
+    /**
+     * Handles an incoming backend -> proxy {@code haikyo:link} {@code 0x03} ({@code HKRQ}) sync frame
+     * on a {@code PROXY} server when {@code link.accept-backend-requires-sync: true}.
+     */
+    public HaikyoLinkCodec.RequireSyncDecodeResult handleIncomingRequireSync(byte[] wireBytes) {
+        HaikyoConfig cfg = this.config;
+        if (effectiveRole != ServerRole.PROXY || !cfg.linkAcceptBackendRequiresSync()) {
+            return HaikyoLinkCodec.RequireSyncDecodeResult.fail(
+                    HaikyoLinkCodec.FailureCode.MALFORMED_PAYLOAD,
+                    "Backend require sync disabled on proxy"
+            );
+        }
+        WireFrame.DecodeResult decoded = WireFrame.decode(wireBytes, HaikyoChannels.MAX_S2C_WIRE_BYTES);
+        if (!(decoded instanceof WireFrame.DecodeOk ok)
+                || ok.frame().fragmented()
+                || ok.frame().packetType() != HaikyoChannels.PKT_LINK_REQUIRE_SYNC) {
+            return HaikyoLinkCodec.RequireSyncDecodeResult.fail(
+                    HaikyoLinkCodec.FailureCode.MALFORMED_PAYLOAD,
+                    "Invalid haikyo:link 0x03 frame"
+            );
+        }
+        HaikyoLinkCodec.RequireSyncDecodeResult res = HaikyoLinkCodec.verifyAndDecodeRequireSync(
+                ok.frame().payload(),
+                cfg.linkSharedSecret(),
+                clock.instant()
+        );
+        if (!res.valid()) {
+            return res;
+        }
+        HaikyoLinkCodec.RequireSync sync = res.sync();
+        if (sync.require()) {
+            requiresStore.requirePlayer(
+                    sync.playerUuid(),
+                    sync.playerName(),
+                    sync.reason(),
+                    "backend_sync",
+                    clock.instant()
+            );
+            markSuspect(sync.playerUuid(), "backend:" + sync.reason());
+        } else {
+            requiresStore.pardon(sync.playerUuid());
+        }
+        return res;
+    }
+
+    private void publishRequireSyncIfEnabled(boolean require, UUID playerId, String playerName, String reason) {
+        BiConsumer<UUID, byte[]> sender = this.backendLinkSyncSender;
+        if (sender == null) {
+            return;
+        }
+        buildSignedRequireSyncFrame(require, playerId, playerName, reason)
+                .ifPresent(frame -> sender.accept(playerId, frame));
     }
 
     public void reloadConfig(HaikyoConfig newConfig, ServerRole newEffectiveRole) {
@@ -880,13 +972,15 @@ public final class TrustManager implements HaikyoApi {
                 transitionToSuspect(s, "", "always_check_flag:" + checkName, "Flagged always check: " + checkName);
             }
             if (cfg.promoteSuspectToRequire()) {
+                String promoReason = "always_check_flag:" + anticheatId + ":" + checkName;
                 requiresStore.requirePlayer(
                         playerId,
                         s.playerName,
-                        "always_check_flag:" + anticheatId + ":" + checkName,
+                        promoReason,
                         "anticheat:" + anticheatId,
                         clock.instant()
                 );
+                publishRequireSyncIfEnabled(true, playerId, s.playerName, promoReason);
             }
             return new FlagDecision(false, CheckPolicy.ALWAYS, "always_check", false);
         }
@@ -914,14 +1008,28 @@ public final class TrustManager implements HaikyoApi {
     }
 
     /**
-     * Promotes a player to {@code SUSPECT} and optionally adds them to {@code requires-haikyo.json}.
+     * Promotes a player to {@code SUSPECT}, optionally adds them to {@code requires-haikyo.json},
+     * and propagates to the Velocity proxy over {@code haikyo:link} ({@code 0x03}) when enabled.
      */
     public boolean markSuspectAndMaybeRequire(UUID playerId, String playerName, String reason, String addedBy) {
         boolean existed = markSuspect(playerId, reason);
         if (config.promoteSuspectToRequire()) {
             requiresStore.requirePlayer(playerId, playerName, reason, addedBy, clock.instant());
+            publishRequireSyncIfEnabled(true, playerId, playerName, reason);
         }
         return existed;
+    }
+
+    /**
+     * Removes a player from {@code requires-haikyo.json} and propagates the pardon to the Velocity
+     * proxy over {@code haikyo:link} ({@code 0x03}) when enabled on a backend server.
+     */
+    public Optional<RequiresHaikyoStore.Entry> pardonPlayer(String target) {
+        Optional<RequiresHaikyoStore.Entry> removed = requiresStore.pardonByNameOrUuid(target);
+        removed.ifPresent(entry ->
+                publishRequireSyncIfEnabled(false, entry.playerId(), entry.playerName(), "pardon")
+        );
+        return removed;
     }
 
     // -------------------------------------------------------------------------

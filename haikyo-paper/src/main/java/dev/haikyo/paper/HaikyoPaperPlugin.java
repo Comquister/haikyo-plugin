@@ -104,6 +104,7 @@ public final class HaikyoPaperPlugin extends JavaPlugin implements Listener, Plu
                 Clock.systemUTC(),
                 () -> ThreadLocalRandom.current().nextDouble()
         );
+        this.trustManager.setBackendLinkSyncSender(this::sendBackendLinkSync);
 
         registerCoreChannels();
 
@@ -335,6 +336,29 @@ public final class HaikyoPaperPlugin extends JavaPlugin implements Listener, Plu
         } catch (IllegalArgumentException e) {
             return false;
         }
+    }
+
+    /**
+     * Sends a signed backend -> proxy {@code haikyo:link} {@code 0x03} frame using the target player
+     * if online, or any online player carrier on this backend (Folia-safe via entity scheduler).
+     */
+    private void sendBackendLinkSync(UUID preferredPlayerId, byte[] wireFrame) {
+        Player carrier = preferredPlayerId != null ? Bukkit.getPlayer(preferredPlayerId) : null;
+        if (carrier == null || !carrier.isOnline()) {
+            carrier = Bukkit.getOnlinePlayers().stream().findFirst().orElse(null);
+        }
+        if (carrier == null || !carrier.isOnline()) {
+            return;
+        }
+        Player targetCarrier = carrier;
+        targetCarrier.getScheduler().run(this, task -> {
+            if (targetCarrier.isOnline()) {
+                try {
+                    targetCarrier.sendPluginMessage(this, HaikyoChannels.LINK, wireFrame);
+                } catch (IllegalArgumentException ignored) {
+                }
+            }
+        }, null);
     }
 
     private void kickPlayerLocalized(UUID playerId, String reasonKey, String detail) {
