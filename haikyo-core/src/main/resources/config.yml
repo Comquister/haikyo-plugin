@@ -120,16 +120,15 @@ anticheat:
 # Administrative commands (haikyo:admin): /haikyo info, hwid, screenshot.
 admin:
   # Enable admin inspection commands (/haikyo info, hwid, screenshot).
-  # Disabled by default: owner must manually enable.
-  enabled: false
+  enabled: true
   # Per-server salt mixed into the client's SHA-256 HWID (defaults to server-id when empty).
   # Different servers always observe different HWIDs for the same PC.
   hwid-salt: ""
   # Retention window for plugins/Haikyo/audit.log (stores who/whom/when only — NEVER images).
   audit-retention-days: 30
   screenshot:
-    # Whether the screenshot service is enabled. Disabled by default.
-    enabled: false
+    # Whether the screenshot service is enabled.
+    enabled: true
     # Delivery mode: builtin | upload | file
     # - builtin: embedded HTTP server serving /haikyo/s/<128-bit-token> for ttl-seconds (auto-deletes on expiry).
     #   Automatically falls back to 'file' if builtin.public-url is blank.
