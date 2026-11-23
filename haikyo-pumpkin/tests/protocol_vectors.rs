@@ -9,8 +9,13 @@ use haikyo_pumpkin::framing::{
 
 #[test]
 fn test_protocol_vectors_cross_language() {
-    let path = Path::new("../../tools/protocol_vectors.json");
-    let content = fs::read_to_string(path).expect("Could not read tools/protocol_vectors.json");
+    let local_path = Path::new("tests/protocol_vectors.json");
+    let fallback_path = Path::new("../../tools/protocol_vectors.json");
+    let content = if local_path.exists() {
+        fs::read_to_string(local_path).expect("Could not read tests/protocol_vectors.json")
+    } else {
+        fs::read_to_string(fallback_path).expect("Could not read ../../tools/protocol_vectors.json")
+    };
     let json: serde_json::Value = serde_json::from_str(&content).expect("Valid JSON");
 
     let reference_now = json["reference_now_unix"].as_u64().unwrap();
