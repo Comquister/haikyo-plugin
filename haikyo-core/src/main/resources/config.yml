@@ -40,8 +40,9 @@ consent-scopes:
 # Attestation verification settings (Ed25519 public keys only — NEVER private keys).
 attestation:
   # Map of key_id -> Base64 raw 32-byte or X.509 SPKI DER Ed25519 public key.
-  # Server owners can add rotated keys without downtime.
-  public-keys: {}
+  # Ships with the official haikyo.conquister.net key (k1); server owners can add rotated keys without downtime.
+  public-keys:
+    k1: "BrOlqFYD4IRYXlU56Kcq6t8Zb+Th5YlHNSB/2wlTS4M="
   # Client versions explicitly rejected by this server (e.g. ["v2026.10.01"]).
   revoked-versions: []
   # Mark players as SUSPECT if client reports Agent Control (--control) enabled.
