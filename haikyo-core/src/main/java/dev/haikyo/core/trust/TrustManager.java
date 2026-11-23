@@ -38,6 +38,7 @@ import dev.haikyo.core.protocol.ProtocolMessages;
 import dev.haikyo.core.protocol.WireFrame;
 import dev.haikyo.core.store.RequiresHaikyoStore;
 import dev.haikyo.core.util.Hex;
+import dev.haikyo.core.util.Java8Compat;
 import dev.haikyo.core.voice.VoiceModerationManager;
 
 import java.security.SecureRandom;
@@ -95,10 +96,40 @@ public final class TrustManager implements HaikyoApi {
         void onModChannelChanged(String channel, boolean registered);
     }
 
-    public record FlagDecision(boolean cancelFlag, CheckPolicy policy, String reason, boolean inputCorroborated) {
+    public static final class FlagDecision {
+        private final boolean cancelFlag;
+        private final CheckPolicy policy;
+        private final String reason;
+        private final boolean inputCorroborated;
+
+        public FlagDecision(boolean cancelFlag, CheckPolicy policy, String reason, boolean inputCorroborated) {
+            this.cancelFlag = cancelFlag;
+            this.policy = policy;
+            this.reason = reason;
+            this.inputCorroborated = inputCorroborated;
+        }
+
+        public boolean cancelFlag() { return cancelFlag; }
+        public CheckPolicy policy() { return policy; }
+        public String reason() { return reason; }
+        public boolean inputCorroborated() { return inputCorroborated; }
     }
 
-    public record RegisteredModEndpoint(String modId, String version, ModMessageHandler handler) {
+    public static final class RegisteredModEndpoint {
+        private final String modId;
+        private final String version;
+        private final ModMessageHandler handler;
+
+        public RegisteredModEndpoint(String modId, String version, ModMessageHandler handler) {
+            this.modId = modId;
+            this.version = version;
+            this.handler = handler;
+        }
+
+        public String modId() { return modId; }
+        public String version() { return version; }
+        public ModMessageHandler handler() { return handler; }
+
         public String capabilityTag() {
             return modId + "@" + version;
         }
@@ -182,8 +213,7 @@ public final class TrustManager implements HaikyoApi {
         HaikyoConfig cfg = this.config;
         if (effectiveRole != ServerRole.BACKEND
                 || !cfg.linkSyncRequiresToProxy()
-                || cfg.linkSharedSecret() == null
-                || cfg.linkSharedSecret().isBlank()) {
+                || Java8Compat.isBlank(cfg.linkSharedSecret())) {
             return Optional.empty();
         }
         HaikyoLinkCodec.RequireSync sync = new HaikyoLinkCodec.RequireSync(
@@ -210,8 +240,14 @@ public final class TrustManager implements HaikyoApi {
             );
         }
         WireFrame.DecodeResult decoded = WireFrame.decode(wireBytes, HaikyoChannels.MAX_S2C_WIRE_BYTES);
-        if (!(decoded instanceof WireFrame.DecodeOk ok)
-                || ok.frame().fragmented()
+        if (!(decoded instanceof WireFrame.DecodeOk)) {
+            return HaikyoLinkCodec.RequireSyncDecodeResult.fail(
+                    HaikyoLinkCodec.FailureCode.MALFORMED_PAYLOAD,
+                    "Invalid haikyo:link 0x03 frame"
+            );
+        }
+        WireFrame.DecodeOk ok = (WireFrame.DecodeOk) decoded;
+        if (ok.frame().fragmented()
                 || ok.frame().packetType() != HaikyoChannels.PKT_LINK_REQUIRE_SYNC) {
             return HaikyoLinkCodec.RequireSyncDecodeResult.fail(
                     HaikyoLinkCodec.FailureCode.MALFORMED_PAYLOAD,
@@ -298,7 +334,7 @@ public final class TrustManager implements HaikyoApi {
     public void registerModEndpoint(String modId, String version, ModMessageHandler handler) {
         Objects.requireNonNull(handler, "handler");
         String channel = HaikyoChannels.modChannel(modId);
-        String ver = (version == null || version.isBlank()) ? "1" : version.trim();
+        String ver = Java8Compat.isBlank(version) ? "1" : version.trim();
         modEndpoints.put(modId, new RegisteredModEndpoint(modId, ver, handler));
         modChannelHook.onModChannelChanged(channel, true);
     }
@@ -430,7 +466,7 @@ public final class TrustManager implements HaikyoApi {
         if (s == null) {
             return false;
         }
-        String r = (reason == null || reason.isBlank()) ? "manual_suspect" : reason;
+        String r = Java8Compat.isBlank(reason) ? "manual_suspect" : reason;
         transitionToSuspect(s, "", "suspect:" + r, r);
         return true;
     }
@@ -441,8 +477,8 @@ public final class TrustManager implements HaikyoApi {
         if (s == null) {
             return;
         }
-        String src = (sourcePlugin == null || sourcePlugin.isBlank()) ? "external" : sourcePlugin.trim();
-        String sig = (signalName == null || signalName.isBlank()) ? "signal" : signalName.trim();
+        String src = Java8Compat.isBlank(sourcePlugin) ? "external" : sourcePlugin.trim();
+        String sig = Java8Compat.isBlank(signalName) ? "signal" : signalName.trim();
         transitionToSuspect(s, src, "external:" + src + ":" + sig, "External signal from " + src + ": " + sig);
     }
 
@@ -451,8 +487,8 @@ public final class TrustManager implements HaikyoApi {
         if (playerId == null) {
             return;
         }
-        String src = (sourcePlugin == null || sourcePlugin.isBlank()) ? "external" : sourcePlugin.trim();
-        String r = (reason == null || reason.isBlank()) ? "flagged_by_" + src : reason.trim();
+        String src = Java8Compat.isBlank(sourcePlugin) ? "external" : sourcePlugin.trim();
+        String r = Java8Compat.isBlank(reason) ? "flagged_by_" + src : reason.trim();
         MutableSession s = sessions.get(playerId);
         String name = s == null ? "" : s.playerName;
         markSuspectAndMaybeRequire(playerId, name, r, "plugin:" + src);
@@ -534,8 +570,8 @@ public final class TrustManager implements HaikyoApi {
             Consumer<ProtocolMessages.AdminInfoResponse> onReply
     ) {
         return sendAdminRequestInternal(playerId, targetName, actorName, "info", obj -> {
-            if (obj instanceof ProtocolMessages.AdminInfoResponse resp && onReply != null) {
-                onReply.accept(resp);
+            if (obj instanceof ProtocolMessages.AdminInfoResponse && onReply != null) {
+                onReply.accept((ProtocolMessages.AdminInfoResponse) obj);
             }
         });
     }
@@ -547,8 +583,8 @@ public final class TrustManager implements HaikyoApi {
             Consumer<ProtocolMessages.AdminHwidResponse> onReply
     ) {
         return sendAdminRequestInternal(playerId, targetName, actorName, "hwid", obj -> {
-            if (obj instanceof ProtocolMessages.AdminHwidResponse resp && onReply != null) {
-                onReply.accept(resp);
+            if (obj instanceof ProtocolMessages.AdminHwidResponse && onReply != null) {
+                onReply.accept((ProtocolMessages.AdminHwidResponse) obj);
             }
         });
     }
@@ -560,8 +596,8 @@ public final class TrustManager implements HaikyoApi {
             Consumer<ProtocolMessages.AdminScreenshotResponse> onReply
     ) {
         return sendAdminRequestInternal(playerId, targetName, actorName, "screenshot", obj -> {
-            if (obj instanceof ProtocolMessages.AdminScreenshotResponse resp && onReply != null) {
-                onReply.accept(resp);
+            if (obj instanceof ProtocolMessages.AdminScreenshotResponse && onReply != null) {
+                onReply.accept((ProtocolMessages.AdminScreenshotResponse) obj);
             }
         });
     }
@@ -579,7 +615,7 @@ public final class TrustManager implements HaikyoApi {
         }
         HaikyoConfig cfg = this.config;
         HaikyoConfig.AdminConfig ac = cfg.admin();
-        String salt = (ac.hwidSalt() == null || ac.hwidSalt().isBlank()) ? cfg.serverId() : ac.hwidSalt();
+        String salt = Java8Compat.isBlank(ac.hwidSalt()) ? cfg.serverId() : ac.hwidSalt();
         AdminRequestManager.PendingRequest pending = adminRequestManager.createRequest(
                 kind, playerId, targetName, actorName, callback
         );
@@ -679,7 +715,11 @@ public final class TrustManager implements HaikyoApi {
             return HaikyoLinkCodec.DecodeResult.fail(HaikyoLinkCodec.FailureCode.MALFORMED_PAYLOAD, "Unknown player session");
         }
         WireFrame.DecodeResult decoded = WireFrame.decode(wireBytes, HaikyoChannels.MAX_S2C_WIRE_BYTES);
-        if (!(decoded instanceof WireFrame.DecodeOk ok) || ok.frame().fragmented()
+        if (!(decoded instanceof WireFrame.DecodeOk)) {
+            return HaikyoLinkCodec.DecodeResult.fail(HaikyoLinkCodec.FailureCode.MALFORMED_PAYLOAD, "Invalid haikyo:link frame");
+        }
+        WireFrame.DecodeOk ok = (WireFrame.DecodeOk) decoded;
+        if (ok.frame().fragmented()
                 || ok.frame().packetType() != HaikyoChannels.PKT_LINK_SESSION) {
             return HaikyoLinkCodec.DecodeResult.fail(HaikyoLinkCodec.FailureCode.MALFORMED_PAYLOAD, "Invalid haikyo:link frame");
         }
@@ -740,11 +780,11 @@ public final class TrustManager implements HaikyoApi {
         }
         FragmentReassembler reassembler = s.reassemblers.computeIfAbsent(channel, k -> new FragmentReassembler());
         FragmentReassembler.Result result = reassembler.accept(wireBytes, HaikyoChannels.MAX_C2S_WIRE_BYTES, clock.instant());
-        if (!(result instanceof FragmentReassembler.Complete complete)) {
+        if (!(result instanceof FragmentReassembler.Complete)) {
             // Higher protocol versions, pending fragments, and malformed frames never disconnect the client
             return;
         }
-        FragmentReassembler.CompletePacket pkt = complete.packet();
+        FragmentReassembler.CompletePacket pkt = ((FragmentReassembler.Complete) result).packet();
         try {
             if (HaikyoChannels.CONTROL.equals(channel) && pkt.packetType() == HaikyoChannels.PKT_CONTROL_HELLO_ACK) {
                 handleHelloAck(s, ProtocolMessages.HelloAck.decodeJson(pkt.body()));
@@ -789,7 +829,7 @@ public final class TrustManager implements HaikyoApi {
                 int at = cap.indexOf('@');
                 if (at > 0 && at + 1 < cap.length()) {
                     s.modCapabilities.put(cap.substring(0, at), cap.substring(at + 1));
-                } else if (!cap.isBlank()) {
+                } else if (!Java8Compat.isBlank(cap)) {
                     s.modCapabilities.put(cap, "1");
                 }
             }
@@ -816,7 +856,7 @@ public final class TrustManager implements HaikyoApi {
     }
 
     private void handleAttestResponse(MutableSession s, ProtocolMessages.AttestResponse resp) {
-        if (resp.error() != null && !resp.error().isBlank()) {
+        if (!Java8Compat.isBlank(resp.error())) {
             sendAttestResult(s.playerId, false, s.trustLevel, resp.error());
             if (isHaikyoRequiredFor(s.playerId)) {
                 playerKicker.kick(s.playerId, "kick.attestation_failed", resp.error());
@@ -909,7 +949,7 @@ public final class TrustManager implements HaikyoApi {
             transitionToSuspect(s, "", "agent_control_enabled", "Client reported Agent Control (--control) enabled");
         }
         for (String sig : report.signals()) {
-            if (sig != null && !sig.isBlank()) {
+            if (!Java8Compat.isBlank(sig)) {
                 transitionToSuspect(s, "", "client_signal:" + sig, "Client integrity signal: " + sig);
             }
         }

@@ -20,6 +20,7 @@ package dev.haikyo.core.util;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -49,10 +50,10 @@ public final class JsonCodec {
     @SuppressWarnings("unchecked")
     public static Map<String, Object> parseObject(String json) {
         Object val = parse(json);
-        if (!(val instanceof Map<?, ?> map)) {
+        if (!(val instanceof Map<?, ?>)) {
             throw new IllegalArgumentException("Expected JSON object");
         }
-        return (Map<String, Object>) map;
+        return (Map<String, Object>) val;
     }
 
     public static String stringify(Object value) {
@@ -68,34 +69,22 @@ public final class JsonCodec {
         return sb.toString();
     }
 
-    /**
-     * Canonical scalar formatting shared with Rust {@code haikyo-link} and Python vectors
-     * for {@code integrity_report} HMAC computation:
-     * integers render without {@code .0}, decimals strip trailing zeros, booleans render
-     * {@code true}/{@code false}, strings render raw.
-     */
     public static String formatCanonicalScalar(Object value) {
         if (value == null) {
             return "null";
         }
-        if (value instanceof Boolean b) {
-            return b ? "true" : "false";
+        if (value instanceof Boolean) {
+            return ((Boolean) value).booleanValue() ? "true" : "false";
         }
         if (value instanceof Integer || value instanceof Long || value instanceof Short || value instanceof Byte) {
             return Long.toString(((Number) value).longValue());
         }
-        if (value instanceof Number n) {
-            double d = n.doubleValue();
-            if (!Double.isFinite(d)) {
-                return "0";
-            }
-            if (d == 0.0) {
+        if (value instanceof Number) {
+            double d = ((Number) value).doubleValue();
+            if (!Double.isFinite(d) || d == 0.0) {
                 return "0";
             }
             BigDecimal bd = BigDecimal.valueOf(d).stripTrailingZeros();
-            if (bd.scale() <= 0) {
-                return bd.toPlainString();
-            }
             return bd.toPlainString();
         }
         return value.toString();
@@ -103,55 +92,55 @@ public final class JsonCodec {
 
     public static String asString(Map<String, Object> map, String key, String defaultVal) {
         Object v = map.get(key);
-        return v instanceof String s ? s : defaultVal;
+        return v instanceof String ? (String) v : defaultVal;
     }
 
     public static String asNullableString(Map<String, Object> map, String key) {
         Object v = map.get(key);
-        return v instanceof String s ? s : null;
+        return v instanceof String ? (String) v : null;
     }
 
     public static int asInt(Map<String, Object> map, String key, int defaultVal) {
         Object v = map.get(key);
-        return v instanceof Number n ? n.intValue() : defaultVal;
+        return v instanceof Number ? ((Number) v).intValue() : defaultVal;
     }
 
     public static long asLong(Map<String, Object> map, String key, long defaultVal) {
         Object v = map.get(key);
-        return v instanceof Number n ? n.longValue() : defaultVal;
+        return v instanceof Number ? ((Number) v).longValue() : defaultVal;
     }
 
     public static double asDouble(Map<String, Object> map, String key, double defaultVal) {
         Object v = map.get(key);
-        return v instanceof Number n ? n.doubleValue() : defaultVal;
+        return v instanceof Number ? ((Number) v).doubleValue() : defaultVal;
     }
 
     public static boolean asBoolean(Map<String, Object> map, String key, boolean defaultVal) {
         Object v = map.get(key);
-        return v instanceof Boolean b ? b : defaultVal;
+        return v instanceof Boolean ? ((Boolean) v).booleanValue() : defaultVal;
     }
 
     @SuppressWarnings("unchecked")
     public static Map<String, Object> asObject(Map<String, Object> map, String key) {
         Object v = map.get(key);
-        return v instanceof Map<?, ?> m ? (Map<String, Object>) m : Map.of();
+        return v instanceof Map<?, ?> ? (Map<String, Object>) v : Collections.<String, Object>emptyMap();
     }
 
     @SuppressWarnings("unchecked")
     public static List<Object> asList(Map<String, Object> map, String key) {
         Object v = map.get(key);
-        return v instanceof List<?> l ? (List<Object>) l : List.of();
+        return v instanceof List<?> ? (List<Object>) v : Collections.<Object>emptyList();
     }
 
     public static List<String> asStringList(Map<String, Object> map, String key) {
         List<Object> raw = asList(map, key);
         if (raw.isEmpty()) {
-            return List.of();
+            return Collections.emptyList();
         }
-        List<String> out = new ArrayList<>(raw.size());
+        List<String> out = new ArrayList<String>(raw.size());
         for (Object item : raw) {
-            if (item instanceof String s) {
-                out.add(s);
+            if (item instanceof String) {
+                out.add((String) item);
             }
         }
         return out;
@@ -160,13 +149,14 @@ public final class JsonCodec {
     private static void writeValue(StringBuilder sb, Object value) {
         if (value == null) {
             sb.append("null");
-        } else if (value instanceof String s) {
-            writeString(sb, s);
-        } else if (value instanceof Boolean b) {
-            sb.append(b ? "true" : "false");
-        } else if (value instanceof Number n) {
-            writeNumber(sb, n);
-        } else if (value instanceof Map<?, ?> m) {
+        } else if (value instanceof String) {
+            writeString(sb, (String) value);
+        } else if (value instanceof Boolean) {
+            sb.append(((Boolean) value).booleanValue() ? "true" : "false");
+        } else if (value instanceof Number) {
+            writeNumber(sb, (Number) value);
+        } else if (value instanceof Map<?, ?>) {
+            Map<?, ?> m = (Map<?, ?>) value;
             sb.append('{');
             boolean first = true;
             for (Map.Entry<?, ?> e : m.entrySet()) {
@@ -179,7 +169,8 @@ public final class JsonCodec {
                 writeValue(sb, e.getValue());
             }
             sb.append('}');
-        } else if (value instanceof Collection<?> c) {
+        } else if (value instanceof Collection<?>) {
+            Collection<?> c = (Collection<?>) value;
             sb.append('[');
             boolean first = true;
             for (Object item : c) {
@@ -196,7 +187,8 @@ public final class JsonCodec {
     }
 
     private static void writePretty(StringBuilder sb, Object value, int indent) {
-        if (value instanceof Map<?, ?> m) {
+        if (value instanceof Map<?, ?>) {
+            Map<?, ?> m = (Map<?, ?>) value;
             if (m.isEmpty()) {
                 sb.append("{}");
                 return;
@@ -216,7 +208,8 @@ public final class JsonCodec {
             sb.append('\n');
             appendIndent(sb, indent);
             sb.append('}');
-        } else if (value instanceof Collection<?> c) {
+        } else if (value instanceof Collection<?>) {
+            Collection<?> c = (Collection<?>) value;
             if (c.isEmpty()) {
                 sb.append("[]");
                 return;
@@ -263,20 +256,34 @@ public final class JsonCodec {
         for (int i = 0; i < s.length(); i++) {
             char c = s.charAt(i);
             switch (c) {
-                case '"' -> sb.append("\\\"");
-                case '\\' -> sb.append("\\\\");
-                case '\b' -> sb.append("\\b");
-                case '\f' -> sb.append("\\f");
-                case '\n' -> sb.append("\\n");
-                case '\r' -> sb.append("\\r");
-                case '\t' -> sb.append("\\t");
-                default -> {
+                case '"':
+                    sb.append("\\\"");
+                    break;
+                case '\\':
+                    sb.append("\\\\");
+                    break;
+                case '\b':
+                    sb.append("\\b");
+                    break;
+                case '\f':
+                    sb.append("\\f");
+                    break;
+                case '\n':
+                    sb.append("\\n");
+                    break;
+                case '\r':
+                    sb.append("\\r");
+                    break;
+                case '\t':
+                    sb.append("\\t");
+                    break;
+                default:
                     if (c < 0x20) {
                         sb.append(String.format("\\u%04x", (int) c));
                     } else {
                         sb.append(c);
                     }
-                }
+                    break;
             }
         }
         sb.append('"');
@@ -312,25 +319,30 @@ public final class JsonCodec {
                 throw new IllegalArgumentException("Unexpected end of JSON");
             }
             char c = s.charAt(pos);
-            return switch (c) {
-                case '{' -> parseObject(depth + 1);
-                case '[' -> parseArray(depth + 1);
-                case '"' -> parseString();
-                case 't' -> parseLiteral("true", Boolean.TRUE);
-                case 'f' -> parseLiteral("false", Boolean.FALSE);
-                case 'n' -> parseLiteral("null", null);
-                default -> {
+            switch (c) {
+                case '{':
+                    return parseObject(depth + 1);
+                case '[':
+                    return parseArray(depth + 1);
+                case '"':
+                    return parseString();
+                case 't':
+                    return parseLiteral("true", Boolean.TRUE);
+                case 'f':
+                    return parseLiteral("false", Boolean.FALSE);
+                case 'n':
+                    return parseLiteral("null", null);
+                default:
                     if (c == '-' || (c >= '0' && c <= '9')) {
-                        yield parseNumber();
+                        return parseNumber();
                     }
                     throw new IllegalArgumentException("Unexpected char '" + c + "' at index " + pos);
-                }
-            };
+            }
         }
 
         Map<String, Object> parseObject(int depth) {
-            pos++; // '{'
-            Map<String, Object> map = new LinkedHashMap<>();
+            pos++;
+            Map<String, Object> map = new LinkedHashMap<String, Object>();
             skipWs();
             if (pos < len && s.charAt(pos) == '}') {
                 pos++;
@@ -364,8 +376,8 @@ public final class JsonCodec {
         }
 
         List<Object> parseArray(int depth) {
-            pos++; // '['
-            List<Object> list = new ArrayList<>();
+            pos++;
+            List<Object> list = new ArrayList<Object>();
             skipWs();
             if (pos < len && s.charAt(pos) == ']') {
                 pos++;
@@ -388,7 +400,7 @@ public final class JsonCodec {
         }
 
         String parseString() {
-            pos++; // '"'
+            pos++;
             StringBuilder sb = new StringBuilder();
             while (pos < len) {
                 char c = s.charAt(pos++);
@@ -401,23 +413,40 @@ public final class JsonCodec {
                     }
                     char esc = s.charAt(pos++);
                     switch (esc) {
-                        case '"' -> sb.append('"');
-                        case '\\' -> sb.append('\\');
-                        case '/' -> sb.append('/');
-                        case 'b' -> sb.append('\b');
-                        case 'f' -> sb.append('\f');
-                        case 'n' -> sb.append('\n');
-                        case 'r' -> sb.append('\r');
-                        case 't' -> sb.append('\t');
-                        case 'u' -> {
+                        case '"':
+                            sb.append('"');
+                            break;
+                        case '\\':
+                            sb.append('\\');
+                            break;
+                        case '/':
+                            sb.append('/');
+                            break;
+                        case 'b':
+                            sb.append('\b');
+                            break;
+                        case 'f':
+                            sb.append('\f');
+                            break;
+                        case 'n':
+                            sb.append('\n');
+                            break;
+                        case 'r':
+                            sb.append('\r');
+                            break;
+                        case 't':
+                            sb.append('\t');
+                            break;
+                        case 'u':
                             if (pos + 4 > len) {
                                 throw new IllegalArgumentException("Truncated \\u escape");
                             }
                             int cp = Integer.parseInt(s.substring(pos, pos + 4), 16);
                             sb.append((char) cp);
                             pos += 4;
-                        }
-                        default -> throw new IllegalArgumentException("Invalid escape '\\" + esc + "'");
+                            break;
+                        default:
+                            throw new IllegalArgumentException("Invalid escape '\\" + esc + "'");
                     }
                 } else if (c < 0x20) {
                     throw new IllegalArgumentException("Unescaped control char in JSON string");

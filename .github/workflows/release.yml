@@ -4,29 +4,30 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
 
 jobs:
   build-java:
     name: Build Java Plugins & Mods
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, haikyo-linux]
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up JDK 25
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '25'
 
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
 
       - name: Build and run tests
         run: ./gradlew build --stacktrace
 
       - name: Upload Java JARs
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: java-jars
           path: |
@@ -37,32 +38,57 @@ jobs:
             !**/build/libs/*-sources.jar
 
   build-pumpkin-native:
-    name: Build Pumpkin Native (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
+    name: Build Pumpkin Native (${{ matrix.label }})
+    runs-on: ${{ startsWith(matrix.runner, '[') && fromJSON(matrix.runner) || matrix.runner }}
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
+          - label: linux
+            runner: '["self-hosted","haikyo-linux"]'
             artifact: libhaikyo_pumpkin.so
             output_name: haikyo-pumpkin-linux.so
-          - os: windows-latest
+            self_hosted: true
+          - label: windows
+            runner: windows-latest
             artifact: haikyo_pumpkin.dll
             output_name: haikyo-pumpkin-windows.dll
-          - os: macos-latest
+            self_hosted: false
+          - label: macos
+            runner: macos-latest
             artifact: libhaikyo_pumpkin.dylib
             output_name: haikyo-pumpkin-macos.dylib
+            self_hosted: false
+    defaults:
+      run:
+        shell: bash
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
-      - name: Clone PumpkinMC Upstream
+      - name: Sync PumpkinMC Upstream
         run: |
-          mkdir -p ../../work
-          git clone --depth 1 https://github.com/Pumpkin-MC/Pumpkin.git ${{ github.workspace }}/../work/pumpkin-repo
+          PUMPKIN_DIR="${{ github.workspace }}/../work/pumpkin-repo"
+          mkdir -p "$(dirname "$PUMPKIN_DIR")"
+          if [ -d "$PUMPKIN_DIR/.git" ]; then
+            git -C "$PUMPKIN_DIR" fetch --depth 1 origin HEAD
+            git -C "$PUMPKIN_DIR" reset --hard FETCH_HEAD
+            git -C "$PUMPKIN_DIR" clean -fd
+          else
+            rm -rf "$PUMPKIN_DIR"
+            git clone --depth 1 https://github.com/Pumpkin-MC/Pumpkin.git "$PUMPKIN_DIR"
+          fi
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Configure persistent Cargo cache on self-hosted runner
+        if: matrix.self_hosted
+        run: |
+          mkdir -p "$HOME/haikyo-plugin-build/pumpkin-native"
+          echo "CARGO_TARGET_DIR=$HOME/haikyo-plugin-build/pumpkin-native" >> "$GITHUB_ENV"
+          echo "CARGO_BUILD_JOBS=4" >> "$GITHUB_ENV"
 
       - name: Test haikyo-pumpkin
         run: cargo test
@@ -72,62 +98,81 @@ jobs:
         run: cargo build --release
         working-directory: haikyo-pumpkin
 
-      - name: Rename artifact
-        shell: bash
-        run: cp haikyo-pumpkin/target/release/${{ matrix.artifact }} ./${{ matrix.output_name }}
+      - name: Stage artifact
+        run: |
+          TARGET_DIR="${CARGO_TARGET_DIR:-haikyo-pumpkin/target}"
+          mkdir -p dist
+          cp "$TARGET_DIR/release/${{ matrix.artifact }}" "dist/${{ matrix.output_name }}"
 
       - name: Upload Native Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
-          name: pumpkin-native-${{ matrix.os }}
-          path: ${{ matrix.output_name }}
+          name: pumpkin-native-${{ matrix.label }}
+          path: dist/${{ matrix.output_name }}
 
   build-pumpkin-wasm:
     name: Build Pumpkin Wasm Component
-    runs-on: ubuntu-latest
-    continue-on-error: true
+    runs-on: [self-hosted, haikyo-linux]
+    defaults:
+      run:
+        shell: bash
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
-      - name: Clone PumpkinMC Upstream
+      - name: Sync PumpkinMC Upstream
         run: |
-          mkdir -p ../../work
-          git clone --depth 1 https://github.com/Pumpkin-MC/Pumpkin.git ${{ github.workspace }}/../work/pumpkin-repo
+          PUMPKIN_DIR="${{ github.workspace }}/../work/pumpkin-repo"
+          mkdir -p "$(dirname "$PUMPKIN_DIR")"
+          if [ -d "$PUMPKIN_DIR/.git" ]; then
+            git -C "$PUMPKIN_DIR" fetch --depth 1 origin HEAD
+            git -C "$PUMPKIN_DIR" reset --hard FETCH_HEAD
+            git -C "$PUMPKIN_DIR" clean -fd
+          else
+            rm -rf "$PUMPKIN_DIR"
+            git clone --depth 1 https://github.com/Pumpkin-MC/Pumpkin.git "$PUMPKIN_DIR"
+          fi
 
-      - name: Install Rust toolchain & wasm target
+      - name: Install Rust toolchain & wasm32-wasip2 target
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: wasm32-wasip1
+          targets: wasm32-wasip2
 
-      - name: Install cargo-component
-        run: cargo install cargo-component --locked
+      - name: Configure persistent Cargo cache on self-hosted runner
+        run: |
+          mkdir -p "$HOME/haikyo-plugin-build/pumpkin-wasm"
+          echo "CARGO_TARGET_DIR=$HOME/haikyo-plugin-build/pumpkin-wasm" >> "$GITHUB_ENV"
+          echo "CARGO_BUILD_JOBS=4" >> "$GITHUB_ENV"
 
-      - name: Build Wasm Component
-        run: cargo component build --release
+      - name: Build Wasm Component (wasm32-wasip2)
+        run: cargo build --target wasm32-wasip2 --release
         working-directory: haikyo-pumpkin-wasm
 
-      - name: Copy artifact
-        run: cp haikyo-pumpkin-wasm/target/wasm32-wasip1/release/haikyo_pumpkin_wasm.wasm ./haikyo-pumpkin.wasm
+      - name: Stage Wasm artifact
+        run: |
+          TARGET_DIR="${CARGO_TARGET_DIR:-haikyo-pumpkin-wasm/target}"
+          mkdir -p dist
+          cp "$TARGET_DIR/wasm32-wasip2/release/haikyo_pumpkin_wasm.wasm" dist/haikyo-pumpkin.wasm
 
       - name: Upload Wasm Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: pumpkin-wasm
-          path: haikyo-pumpkin.wasm
+          path: dist/haikyo-pumpkin.wasm
 
   publish-release:
     name: Publish GitHub Release
     needs: [build-java, build-pumpkin-native, build-pumpkin-wasm]
-    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: [self-hosted, haikyo-linux]
     permissions:
       contents: write
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: release-assets
           merge-multiple: true
@@ -136,7 +181,7 @@ jobs:
         run: ls -la release-assets
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: |
             release-assets/*

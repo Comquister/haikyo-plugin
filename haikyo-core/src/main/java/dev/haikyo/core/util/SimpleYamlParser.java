@@ -32,21 +32,21 @@ public final class SimpleYamlParser {
     }
 
     public static Map<String, Object> parse(String yaml) {
-        if (yaml == null || yaml.isBlank()) {
-            return new LinkedHashMap<>();
+        if (Java8Compat.isBlank(yaml)) {
+            return new LinkedHashMap<String, Object>();
         }
         List<Line> lines = preprocess(yaml);
         if (lines.isEmpty()) {
-            return new LinkedHashMap<>();
+            return new LinkedHashMap<String, Object>();
         }
         Cursor c = new Cursor(lines);
         Object parsed = parseBlock(c, lines.get(0).indent);
-        if (parsed instanceof Map<?, ?> m) {
+        if (parsed instanceof Map<?, ?>) {
             @SuppressWarnings("unchecked")
-            Map<String, Object> result = (Map<String, Object>) m;
+            Map<String, Object> result = (Map<String, Object>) parsed;
             return result;
         }
-        return new LinkedHashMap<>();
+        return new LinkedHashMap<String, Object>();
     }
 
     private static Object parseBlock(Cursor c, int baseIndent) {
@@ -291,7 +291,14 @@ public final class SimpleYamlParser {
         return line;
     }
 
-    private record Line(int indent, String text) {
+    private static final class Line {
+        final int indent;
+        final String text;
+
+        Line(int indent, String text) {
+            this.indent = indent;
+            this.text = text;
+        }
     }
 
     private static final class Cursor {

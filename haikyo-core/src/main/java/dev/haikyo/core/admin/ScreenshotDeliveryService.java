@@ -20,26 +20,27 @@ package dev.haikyo.core.admin;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import dev.haikyo.core.util.Hex;
+import dev.haikyo.core.util.Java8Compat;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
+import java.net.HttpURLConnection;
 import java.net.InetSocketAddress;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
+import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.SecureRandom;
 import java.time.Clock;
-import java.time.Duration;
 import java.time.Instant;
 import java.util.Iterator;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
 
 /**
  * Handles temporary screenshot storage & delivery across all three Phase 7 modes:
@@ -64,48 +65,113 @@ public final class ScreenshotDeliveryService implements AutoCloseable {
             if (raw == null) {
                 return BUILTIN;
             }
-            return switch (raw.trim().toLowerCase(Locale.ROOT)) {
-                case "upload" -> UPLOAD;
-                case "file" -> FILE;
-                default -> BUILTIN;
-            };
+            String lower = raw.trim().toLowerCase(Locale.ROOT);
+            if ("upload".equals(lower)) {
+                return UPLOAD;
+            }
+            if ("file".equals(lower)) {
+                return FILE;
+            }
+            return BUILTIN;
         }
     }
 
-    public record DeliveryConfig(
-            Mode mode,
-            int ttlSeconds,
-            String builtinBindHost,
-            int builtinPort,
-            String builtinPublicUrl,
-            String uploadUrl,
-            String uploadAuthHeader
-    ) {
+    public static final class DeliveryConfig {
+        private final Mode mode;
+        private final int ttlSeconds;
+        private final String builtinBindHost;
+        private final int builtinPort;
+        private final String builtinPublicUrl;
+        private final String uploadUrl;
+        private final String uploadAuthHeader;
+
+        public DeliveryConfig(
+                Mode mode,
+                int ttlSeconds,
+                String builtinBindHost,
+                int builtinPort,
+                String builtinPublicUrl,
+                String uploadUrl,
+                String uploadAuthHeader
+        ) {
+            this.mode = mode;
+            this.ttlSeconds = ttlSeconds;
+            this.builtinBindHost = builtinBindHost;
+            this.builtinPort = builtinPort;
+            this.builtinPublicUrl = builtinPublicUrl;
+            this.uploadUrl = uploadUrl;
+            this.uploadAuthHeader = uploadAuthHeader;
+        }
+
+        public Mode mode() { return mode; }
+        public int ttlSeconds() { return ttlSeconds; }
+        public String builtinBindHost() { return builtinBindHost; }
+        public int builtinPort() { return builtinPort; }
+        public String builtinPublicUrl() { return builtinPublicUrl; }
+        public String uploadUrl() { return uploadUrl; }
+        public String uploadAuthHeader() { return uploadAuthHeader; }
+
         public static DeliveryConfig defaults() {
             return new DeliveryConfig(Mode.BUILTIN, 3600, "0.0.0.0", 8765, "", "", "");
         }
     }
 
-    public record DeliveryResult(
-            boolean success,
-            Mode effectiveMode,
-            String token,
-            String location,
-            Instant expiresAt,
-            String error
-    ) {
+    public static final class DeliveryResult {
+        private final boolean success;
+        private final Mode effectiveMode;
+        private final String token;
+        private final String location;
+        private final Instant expiresAt;
+        private final String error;
+
+        public DeliveryResult(
+                boolean success,
+                Mode effectiveMode,
+                String token,
+                String location,
+                Instant expiresAt,
+                String error
+        ) {
+            this.success = success;
+            this.effectiveMode = effectiveMode;
+            this.token = token;
+            this.location = location;
+            this.expiresAt = expiresAt;
+            this.error = error;
+        }
+
+        public boolean success() { return success; }
+        public Mode effectiveMode() { return effectiveMode; }
+        public String token() { return token; }
+        public String location() { return location; }
+        public Instant expiresAt() { return expiresAt; }
+        public String error() { return error; }
     }
 
-    private record StoredScreen(Path file, String mimeType, Instant expiresAt) {
+    private static final class StoredScreen {
+        private final Path file;
+        private final String mimeType;
+        private final Instant expiresAt;
+
+        StoredScreen(Path file, String mimeType, Instant expiresAt) {
+            this.file = file;
+            this.mimeType = mimeType;
+            this.expiresAt = expiresAt;
+        }
+
+        Path file() { return file; }
+        String mimeType() { return mimeType; }
+        Instant expiresAt() { return expiresAt; }
     }
 
     private final Path screensDir;
     private final Clock clock;
     private final SecureRandom secureRandom = new SecureRandom();
-    private final ConcurrentHashMap<String, StoredScreen> activeTokens = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, StoredScreen> activeTokens = new ConcurrentHashMap<String, StoredScreen>();
 
     private volatile DeliveryConfig config;
     private volatile HttpServer httpServer;
+    private volatile ExecutorService httpExecutor;
     private volatile int boundPort = -1;
 
     public ScreenshotDeliveryService(Path screensDir, DeliveryConfig config, Clock clock) {
@@ -118,8 +184,7 @@ public final class ScreenshotDeliveryService implements AutoCloseable {
         this.config = newConfig == null ? DeliveryConfig.defaults() : newConfig;
         stopHttpServer();
         if (this.config.mode() == Mode.BUILTIN
-                && this.config.builtinPublicUrl() != null
-                && !this.config.builtinPublicUrl().isBlank()) {
+                && !Java8Compat.isBlank(this.config.builtinPublicUrl())) {
             try {
                 startHttpServer(this.config.builtinBindHost(), this.config.builtinPort());
             } catch (IOException ignored) {
@@ -144,12 +209,12 @@ public final class ScreenshotDeliveryService implements AutoCloseable {
         if (imageBytes == null || imageBytes.length == 0) {
             return new DeliveryResult(false, Mode.FILE, "", "", clock.instant(), "Empty screenshot payload");
         }
-        String safeMime = (mimeType == null || mimeType.isBlank()) ? "image/jpeg" : mimeType;
+        String safeMime = Java8Compat.isBlank(mimeType) ? "image/jpeg" : mimeType;
         String token = generate128BitToken();
         DeliveryConfig cfg = this.config;
         Instant expiresAt = clock.instant().plusSeconds(Math.max(10, cfg.ttlSeconds()));
 
-        if (cfg.mode() == Mode.UPLOAD && cfg.uploadUrl() != null && !cfg.uploadUrl().isBlank()) {
+        if (cfg.mode() == Mode.UPLOAD && !Java8Compat.isBlank(cfg.uploadUrl())) {
             DeliveryResult uploadRes = tryUpload(cfg, token, imageBytes, safeMime, expiresAt);
             if (uploadRes.success()) {
                 return uploadRes;
@@ -170,8 +235,7 @@ public final class ScreenshotDeliveryService implements AutoCloseable {
 
         // Builtin mode requires both a configured public URL and a running HTTP server; otherwise fall back to file
         if (cfg.mode() == Mode.BUILTIN
-                && cfg.builtinPublicUrl() != null
-                && !cfg.builtinPublicUrl().isBlank()
+                && !Java8Compat.isBlank(cfg.builtinPublicUrl())
                 && httpServer != null) {
             String base = cfg.builtinPublicUrl().trim();
             while (base.endsWith("/")) {
@@ -214,12 +278,21 @@ public final class ScreenshotDeliveryService implements AutoCloseable {
     }
 
     private void startHttpServer(String bindHost, int port) throws IOException {
-        String host = (bindHost == null || bindHost.isBlank()) ? "0.0.0.0" : bindHost.trim();
+        String host = Java8Compat.isBlank(bindHost) ? "0.0.0.0" : bindHost.trim();
         HttpServer srv = HttpServer.create(new InetSocketAddress(host, Math.max(0, port)), 0);
         srv.createContext("/haikyo/s/", this::handleHttpRequest);
-        srv.setExecutor(Executors.newVirtualThreadPerTaskExecutor());
+        ExecutorService exec = Executors.newCachedThreadPool(new ThreadFactory() {
+            @Override
+            public Thread newThread(Runnable r) {
+                Thread t = new Thread(r, "haikyo-screenshot-http");
+                t.setDaemon(true);
+                return t;
+            }
+        });
+        srv.setExecutor(exec);
         srv.start();
         this.httpServer = srv;
+        this.httpExecutor = exec;
         this.boundPort = srv.getAddress().getPort();
     }
 
@@ -228,6 +301,10 @@ public final class ScreenshotDeliveryService implements AutoCloseable {
             httpServer.stop(0);
             httpServer = null;
             boundPort = -1;
+        }
+        if (httpExecutor != null) {
+            httpExecutor.shutdownNow();
+            httpExecutor = null;
         }
     }
 
@@ -278,30 +355,43 @@ public final class ScreenshotDeliveryService implements AutoCloseable {
     }
 
     private DeliveryResult tryUpload(DeliveryConfig cfg, String token, byte[] bytes, String mime, Instant expiresAt) {
+        HttpURLConnection conn = null;
         try {
             String targetUrl = cfg.uploadUrl().trim().replace("{token}", token);
             if (!cfg.uploadUrl().contains("{token}")) {
                 targetUrl = targetUrl.endsWith("/") ? targetUrl + token + ".jpg" : targetUrl + "/" + token + ".jpg";
             }
-            HttpClient client = HttpClient.newBuilder()
-                    .connectTimeout(Duration.ofSeconds(10))
-                    .build();
-            HttpRequest.Builder req = HttpRequest.newBuilder(URI.create(targetUrl))
-                    .timeout(Duration.ofSeconds(20))
-                    .header("Content-Type", mime)
-                    .PUT(HttpRequest.BodyPublishers.ofByteArray(bytes));
-            if (cfg.uploadAuthHeader() != null && !cfg.uploadAuthHeader().isBlank()) {
-                req.header("Authorization", cfg.uploadAuthHeader().trim());
+            conn = (HttpURLConnection) new URL(targetUrl).openConnection();
+            conn.setRequestMethod("PUT");
+            conn.setConnectTimeout(10_000);
+            conn.setReadTimeout(20_000);
+            conn.setDoOutput(true);
+            conn.setRequestProperty("Content-Type", mime);
+            if (!Java8Compat.isBlank(cfg.uploadAuthHeader())) {
+                conn.setRequestProperty("Authorization", cfg.uploadAuthHeader().trim());
             }
-            HttpResponse<String> resp = client.send(req.build(), HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-            if (resp.statusCode() >= 200 && resp.statusCode() < 300) {
-                String body = resp.body() == null ? "" : resp.body().trim();
+            conn.setFixedLengthStreamingMode(bytes.length);
+            try (OutputStream os = conn.getOutputStream()) {
+                os.write(bytes);
+            }
+            int status = conn.getResponseCode();
+            if (status >= 200 && status < 300) {
+                String body = "";
+                try (InputStream is = conn.getInputStream()) {
+                    if (is != null) {
+                        body = new String(Java8Compat.readAllBytes(is), StandardCharsets.UTF_8).trim();
+                    }
+                }
                 String link = (body.startsWith("http://") || body.startsWith("https://")) ? body : targetUrl;
                 return new DeliveryResult(true, Mode.UPLOAD, token, link, expiresAt, null);
             }
-            return new DeliveryResult(false, Mode.UPLOAD, token, "", expiresAt, "Upload HTTP " + resp.statusCode());
+            return new DeliveryResult(false, Mode.UPLOAD, token, "", expiresAt, "Upload HTTP " + status);
         } catch (Exception e) {
             return new DeliveryResult(false, Mode.UPLOAD, token, "", expiresAt, e.getMessage());
+        } finally {
+            if (conn != null) {
+                conn.disconnect();
+            }
         }
     }
 

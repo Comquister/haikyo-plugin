@@ -36,13 +36,28 @@ import java.util.Map;
 public final class ModRuleEngine {
     private static final double EPSILON = 1e-6;
 
-    public record ModViolation(String modId, String code, String detail) {
+    public static final class ModViolation {
+        private final String modId;
+        private final String code;
+        private final String detail;
+
+        public ModViolation(String modId, String code, String detail) {
+            this.modId = modId;
+            this.code = code;
+            this.detail = detail;
+        }
+
+        public String modId() { return modId; }
+        public String code() { return code; }
+        public String detail() { return detail; }
     }
 
     private final Map<String, ModRule> rules;
 
     public ModRuleEngine(Map<String, ModRule> rules) {
-        this.rules = rules == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(rules));
+        this.rules = rules == null
+                ? Collections.<String, ModRule>emptyMap()
+                : Collections.unmodifiableMap(new LinkedHashMap<String, ModRule>(rules));
     }
 
     public Map<String, ModRule> rules() {
@@ -59,9 +74,9 @@ public final class ModRuleEngine {
      */
     public List<ModViolation> verifyCompliance(Map<String, ProtocolMessages.ReportedModState> reportedMods) {
         if (rules.isEmpty() || reportedMods == null || reportedMods.isEmpty()) {
-            return List.of();
+            return Collections.emptyList();
         }
-        List<ModViolation> violations = new ArrayList<>();
+        List<ModViolation> violations = new ArrayList<ModViolation>();
         for (Map.Entry<String, ModRule> entry : rules.entrySet()) {
             String modId = entry.getKey();
             ModRule rule = entry.getValue();
@@ -101,22 +116,23 @@ public final class ModRuleEngine {
 
     private static String checkParamLimit(String key, Object limitVal, Object reportedVal) {
         String lower = key.toLowerCase(Locale.ROOT);
-        if (limitVal instanceof Number limNum && reportedVal instanceof Number repNum) {
-            double lim = limNum.doubleValue();
-            double rep = repNum.doubleValue();
+        if (limitVal instanceof Number && reportedVal instanceof Number) {
+            double lim = ((Number) limitVal).doubleValue();
+            double rep = ((Number) reportedVal).doubleValue();
             if (lower.startsWith("min_")) {
                 if (rep + EPSILON < lim) {
                     return "Param '" + key + "' value " + rep + " is below server minimum " + lim;
                 }
                 return null;
             }
-            // Default numeric limit (including max_* such as max_factor, max_zoom): upper bound
             if (rep - EPSILON > lim) {
                 return "Param '" + key + "' value " + rep + " exceeds server limit " + lim;
             }
             return null;
         }
-        if (limitVal instanceof Boolean limBool && reportedVal instanceof Boolean repBool) {
+        if (limitVal instanceof Boolean && reportedVal instanceof Boolean) {
+            boolean limBool = ((Boolean) limitVal).booleanValue();
+            boolean repBool = ((Boolean) reportedVal).booleanValue();
             if (!limBool && repBool) {
                 return "Boolean param '" + key + "' enabled despite server limit false";
             }

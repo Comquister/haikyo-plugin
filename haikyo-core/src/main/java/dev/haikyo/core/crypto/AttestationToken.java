@@ -17,6 +17,8 @@
  */
 package dev.haikyo.core.crypto;
 
+import dev.haikyo.core.util.Java8Compat;
+
 import java.io.ByteArrayOutputStream;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -35,26 +37,67 @@ import java.util.UUID;
  * token   = payload || ed25519_sig[64]
  * </pre>
  */
-public record AttestationToken(
-        int versionByte,
-        String keyId,
-        String clientVersion,
-        String channel,
-        byte[] exeSha256,
-        UUID playerUuid,
-        byte[] nonce,
-        String serverAddress,
-        long issuedAt,
-        long expiresAt,
-        byte[] signedPayloadBytes,
-        byte[] signature
-) {
+public final class AttestationToken {
     public static final byte[] MAGIC = {'H', 'K', 'A', 'T'};
     public static final int FORMAT_VERSION = 1;
     public static final int SIGNATURE_LENGTH = 64;
 
+    private final int versionByte;
+    private final String keyId;
+    private final String clientVersion;
+    private final String channel;
+    private final byte[] exeSha256;
+    private final UUID playerUuid;
+    private final byte[] nonce;
+    private final String serverAddress;
+    private final long issuedAt;
+    private final long expiresAt;
+    private final byte[] signedPayloadBytes;
+    private final byte[] signature;
+
+    public AttestationToken(
+            int versionByte,
+            String keyId,
+            String clientVersion,
+            String channel,
+            byte[] exeSha256,
+            UUID playerUuid,
+            byte[] nonce,
+            String serverAddress,
+            long issuedAt,
+            long expiresAt,
+            byte[] signedPayloadBytes,
+            byte[] signature
+    ) {
+        this.versionByte = versionByte;
+        this.keyId = keyId;
+        this.clientVersion = clientVersion;
+        this.channel = channel;
+        this.exeSha256 = exeSha256;
+        this.playerUuid = playerUuid;
+        this.nonce = nonce;
+        this.serverAddress = serverAddress;
+        this.issuedAt = issuedAt;
+        this.expiresAt = expiresAt;
+        this.signedPayloadBytes = signedPayloadBytes;
+        this.signature = signature;
+    }
+
+    public int versionByte() { return versionByte; }
+    public String keyId() { return keyId; }
+    public String clientVersion() { return clientVersion; }
+    public String channel() { return channel; }
+    public byte[] exeSha256() { return exeSha256; }
+    public UUID playerUuid() { return playerUuid; }
+    public byte[] nonce() { return nonce; }
+    public String serverAddress() { return serverAddress; }
+    public long issuedAt() { return issuedAt; }
+    public long expiresAt() { return expiresAt; }
+    public byte[] signedPayloadBytes() { return signedPayloadBytes; }
+    public byte[] signature() { return signature; }
+
     public static AttestationToken decodeBase64(String base64) {
-        if (base64 == null || base64.isBlank()) {
+        if (Java8Compat.isBlank(base64)) {
             throw new IllegalArgumentException("Empty attestation token");
         }
         byte[] raw = Base64.getDecoder().decode(base64.trim());
@@ -117,22 +160,24 @@ public record AttestationToken(
             throw new IllegalArgumentException("nonce must be 32 bytes");
         }
         ByteArrayOutputStream out = new ByteArrayOutputStream(256);
-        out.writeBytes(MAGIC);
+        out.write(MAGIC, 0, MAGIC.length);
         out.write(FORMAT_VERSION);
         writeLpStr(out, keyId);
         writeLpStr(out, clientVersion);
         writeLpStr(out, channel);
-        out.writeBytes(exeSha256);
+        out.write(exeSha256, 0, exeSha256.length);
         ByteBuffer uuidBuf = ByteBuffer.allocate(16).order(ByteOrder.BIG_ENDIAN);
         uuidBuf.putLong(playerUuid.getMostSignificantBits());
         uuidBuf.putLong(playerUuid.getLeastSignificantBits());
-        out.writeBytes(uuidBuf.array());
-        out.writeBytes(nonce);
+        byte[] uuidArr = uuidBuf.array();
+        out.write(uuidArr, 0, uuidArr.length);
+        out.write(nonce, 0, nonce.length);
         writeLpStr(out, ServerAddressNormalizer.normalize(serverAddress));
         ByteBuffer times = ByteBuffer.allocate(16).order(ByteOrder.BIG_ENDIAN);
         times.putLong(issuedAt);
         times.putLong(expiresAt);
-        out.writeBytes(times.array());
+        byte[] timesArr = times.array();
+        out.write(timesArr, 0, timesArr.length);
         return out.toByteArray();
     }
 
@@ -156,7 +201,7 @@ public record AttestationToken(
         }
         out.write((bytes.length >>> 8) & 0xFF);
         out.write(bytes.length & 0xFF);
-        out.writeBytes(bytes);
+        out.write(bytes, 0, bytes.length);
     }
 
     private static byte[] readExact(ByteBuffer buf, int len) {

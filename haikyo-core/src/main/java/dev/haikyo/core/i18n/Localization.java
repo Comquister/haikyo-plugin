@@ -17,6 +17,9 @@
  */
 package dev.haikyo.core.i18n;
 
+import dev.haikyo.core.util.Java8Compat;
+
+import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -34,7 +37,7 @@ import java.util.Properties;
  * with clean fallback to {@code en_us}.
  */
 public final class Localization {
-    public static final List<String> SUPPORTED_LOCALES = List.of("en_us", "pt_br", "es_es");
+    public static final List<String> SUPPORTED_LOCALES = Java8Compat.listOf("en_us", "pt_br", "es_es");
     public static final String DEFAULT_LOCALE = "en_us";
 
     private final String defaultLocale;
@@ -50,9 +53,9 @@ public final class Localization {
     }
 
     public static Localization loadDefault(String defaultLocale, Path overrideDir) {
-        Map<String, Map<String, String>> bundles = new HashMap<>();
+        Map<String, Map<String, String>> bundles = new HashMap<String, Map<String, String>>();
         for (String loc : SUPPORTED_LOCALES) {
-            Map<String, String> entries = new HashMap<>();
+            Map<String, String> entries = new HashMap<String, String>();
             loadClasspathBundle("/lang/" + loc + ".properties", entries);
             if (overrideDir != null) {
                 Path diskFile = overrideDir.resolve(loc + ".properties");
@@ -60,9 +63,9 @@ public final class Localization {
                     loadDiskBundle(diskFile, entries);
                 }
             }
-            bundles.put(loc, Map.copyOf(entries));
+            bundles.put(loc, Java8Compat.copyOfMap(entries));
         }
-        return new Localization(defaultLocale, Map.copyOf(bundles));
+        return new Localization(defaultLocale, Java8Compat.copyOfMap(bundles));
     }
 
     public String defaultLocale() {
@@ -96,7 +99,7 @@ public final class Localization {
     }
 
     public static String normalizeLocale(String locale) {
-        if (locale == null || locale.isBlank()) {
+        if (Java8Compat.isBlank(locale)) {
             return DEFAULT_LOCALE;
         }
         String lower = locale.trim().toLowerCase(Locale.ROOT).replace('-', '_');
@@ -129,7 +132,7 @@ public final class Localization {
     }
 
     private static void loadDiskBundle(Path file, Map<String, String> target) {
-        try (var reader = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
+        try (BufferedReader reader = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
             Properties props = new Properties();
             props.load(reader);
             for (String name : props.stringPropertyNames()) {

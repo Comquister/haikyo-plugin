@@ -21,6 +21,7 @@ import dev.haikyo.core.config.HaikyoConfig;
 import dev.haikyo.core.protocol.HaikyoChannels;
 import dev.haikyo.core.protocol.ProtocolMessages;
 import dev.haikyo.core.protocol.WireFrame;
+import dev.haikyo.core.util.Java8Compat;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -34,14 +35,34 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public final class VoiceModerationManager {
 
-    public record ModerationState(
-            boolean muted,
-            boolean forceMuted,
-            long muteUntilEpochSeconds,
-            String muteReason,
-            boolean adminVoiceActive
-    ) {
+    public static final class ModerationState {
         public static final ModerationState NONE = new ModerationState(false, false, 0L, null, false);
+
+        private final boolean muted;
+        private final boolean forceMuted;
+        private final long muteUntilEpochSeconds;
+        private final String muteReason;
+        private final boolean adminVoiceActive;
+
+        public ModerationState(
+                boolean muted,
+                boolean forceMuted,
+                long muteUntilEpochSeconds,
+                String muteReason,
+                boolean adminVoiceActive
+        ) {
+            this.muted = muted;
+            this.forceMuted = forceMuted;
+            this.muteUntilEpochSeconds = muteUntilEpochSeconds;
+            this.muteReason = muteReason;
+            this.adminVoiceActive = adminVoiceActive;
+        }
+
+        public boolean muted() { return muted; }
+        public boolean forceMuted() { return forceMuted; }
+        public long muteUntilEpochSeconds() { return muteUntilEpochSeconds; }
+        public String muteReason() { return muteReason; }
+        public boolean adminVoiceActive() { return adminVoiceActive; }
 
         public boolean isEffectivelyMuted(Instant now) {
             if (forceMuted) {
@@ -55,7 +76,7 @@ public final class VoiceModerationManager {
     }
 
     private final Clock clock;
-    private final ConcurrentHashMap<UUID, ModerationState> states = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<UUID, ModerationState> states = new ConcurrentHashMap<UUID, ModerationState>();
     private volatile boolean svcDetected;
 
     public VoiceModerationManager(Clock clock) {
@@ -70,20 +91,15 @@ public final class VoiceModerationManager {
         return svcDetected;
     }
 
-    /**
-     * Resolves effective {@code haikyo:voice} mode ({@code "svc"} or {@code "off"}) from
-     * configured {@code voice.mode} ({@code auto | svc | off}) and whether Simple Voice Chat is installed.
-     */
     public String effectiveMode(HaikyoConfig.VoiceConfig cfg) {
         if (cfg == null) {
             return "off";
         }
         String mode = cfg.mode() == null ? "off" : cfg.mode().trim().toLowerCase(Locale.ROOT);
-        return switch (mode) {
-            case "svc" -> svcDetected ? "svc" : "off";
-            case "auto" -> svcDetected ? "svc" : "off";
-            default -> "off";
-        };
+        if ("svc".equals(mode) || "auto".equals(mode)) {
+            return svcDetected ? "svc" : "off";
+        }
+        return "off";
     }
 
     public ModerationState mute(UUID playerId, long durationSeconds, String reason, boolean forceMute) {
@@ -93,7 +109,7 @@ public final class VoiceModerationManager {
                 true,
                 forceMute || prev.forceMuted(),
                 until,
-                (reason == null || reason.isBlank()) ? null : reason,
+                Java8Compat.isBlank(reason) ? null : reason,
                 prev.adminVoiceActive()
         );
         states.put(playerId, next);

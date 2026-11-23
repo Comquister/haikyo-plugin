@@ -22,7 +22,7 @@ use pumpkin_plugin_api::{
 
 use crate::config::HaikyoConfig;
 use crate::crypto::{parse_attestation_token, KeyStore};
-use crate::framing::{encode_unfragmented, DecodeResult, HaikyoFrame};
+use crate::framing::{encode_unfragmented, DecodeResult};
 use crate::messages::{
     C2SHelloAck, S2CAttestChallenge, S2CAttestResult, S2CHello, S2CModsRules,
 };

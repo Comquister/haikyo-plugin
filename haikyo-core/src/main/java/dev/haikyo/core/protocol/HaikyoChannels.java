@@ -17,6 +17,8 @@
  */
 package dev.haikyo.core.protocol;
 
+import dev.haikyo.core.util.Java8Compat;
+
 import java.util.List;
 
 /**
@@ -34,7 +36,7 @@ public final class HaikyoChannels {
     public static final String VOICE = "haikyo:voice";
     public static final String LINK = "haikyo:link";
 
-    public static final List<String> CORE_CHANNELS = List.of(CONTROL, ATTEST, MODS, AC, ADMIN, VOICE);
+    public static final List<String> CORE_CHANNELS = Java8Compat.listOf(CONTROL, ATTEST, MODS, AC, ADMIN, VOICE);
 
     // Wire framing constants
     public static final byte MAGIC_0 = 'H';

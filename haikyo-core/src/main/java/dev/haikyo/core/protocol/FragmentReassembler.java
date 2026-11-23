@@ -35,34 +35,81 @@ import java.util.Map;
 public final class FragmentReassembler {
     private static final Duration PENDING_TTL = Duration.ofSeconds(30);
 
-    public record CompletePacket(int protocolVersion, int packetType, byte[] body) {
+    public static final class CompletePacket {
+        private final int protocolVersion;
+        private final int packetType;
+        private final byte[] body;
+
+        public CompletePacket(int protocolVersion, int packetType, byte[] body) {
+            this.protocolVersion = protocolVersion;
+            this.packetType = packetType;
+            this.body = body;
+        }
+
+        public int protocolVersion() { return protocolVersion; }
+        public int packetType() { return packetType; }
+        public byte[] body() { return body; }
     }
 
-    public sealed interface Result permits Complete, Pending, IgnoredHigherVersion, Rejected {
+    public interface Result {
     }
 
-    public record Complete(CompletePacket packet) implements Result {
+    public static final class Complete implements Result {
+        private final CompletePacket packet;
+
+        public Complete(CompletePacket packet) {
+            this.packet = packet;
+        }
+
+        public CompletePacket packet() { return packet; }
     }
 
-    public record Pending(int fragId, int receivedCount, int totalCount) implements Result {
+    public static final class Pending implements Result {
+        private final int fragId;
+        private final int receivedCount;
+        private final int totalCount;
+
+        public Pending(int fragId, int receivedCount, int totalCount) {
+            this.fragId = fragId;
+            this.receivedCount = receivedCount;
+            this.totalCount = totalCount;
+        }
+
+        public int fragId() { return fragId; }
+        public int receivedCount() { return receivedCount; }
+        public int totalCount() { return totalCount; }
     }
 
-    public record IgnoredHigherVersion(int protocolVersion) implements Result {
+    public static final class IgnoredHigherVersion implements Result {
+        private final int protocolVersion;
+
+        public IgnoredHigherVersion(int protocolVersion) {
+            this.protocolVersion = protocolVersion;
+        }
+
+        public int protocolVersion() { return protocolVersion; }
     }
 
-    public record Rejected(String reason) implements Result {
+    public static final class Rejected implements Result {
+        private final String reason;
+
+        public Rejected(String reason) {
+            this.reason = reason;
+        }
+
+        public String reason() { return reason; }
     }
 
-    private final Map<Integer, PendingAssembly> pending = new HashMap<>();
+    private final Map<Integer, PendingAssembly> pending = new HashMap<Integer, PendingAssembly>();
 
     public synchronized Result accept(byte[] wireBytes, int maxWireBytes, Instant now) {
         pruneExpired(now);
         WireFrame.DecodeResult decoded = WireFrame.decode(wireBytes, maxWireBytes);
-        if (decoded instanceof WireFrame.DecodeHigherVersion higher) {
-            return new IgnoredHigherVersion(higher.protocolVersion());
+        if (decoded instanceof WireFrame.DecodeHigherVersion) {
+            return new IgnoredHigherVersion(((WireFrame.DecodeHigherVersion) decoded).protocolVersion());
         }
-        if (decoded instanceof WireFrame.DecodeInvalid invalid) {
-            return new Rejected(invalid.reason());
+        if (decoded instanceof WireFrame.DecodeInvalid) {
+            return new Rejected(((WireFrame.DecodeInvalid) decoded).reason());
         }
         WireFrame.DecodedFrame frame = ((WireFrame.DecodeOk) decoded).frame();
         if (!frame.fragmented()) {
@@ -98,7 +145,6 @@ public final class FragmentReassembler {
         byte[] existing = asm.chunks[frame.fragIndex()];
         if (existing != null) {
             if (Arrays.equals(existing, frame.payload())) {
-                // Spec: ignore duplicate identical frag_idx
                 return new Pending(fragId, asm.receivedCount, asm.total);
             }
             pending.remove(fragId);

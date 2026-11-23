@@ -18,12 +18,9 @@
 package dev.haikyo.core.crypto;
 
 import dev.haikyo.core.util.Hex;
+import dev.haikyo.core.util.Java8Compat;
 
-import java.security.GeneralSecurityException;
-import java.security.KeyFactory;
 import java.security.PublicKey;
-import java.security.Signature;
-import java.security.spec.X509EncodedKeySpec;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.Collections;
@@ -34,11 +31,10 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * Verifies Ed25519 attestation tokens using built-in JDK Ed25519 ({@code KeyFactory}/{@code Signature})
- * with zero third-party cryptography dependencies.
+ * Verifies Ed25519 attestation tokens using built-in JDK Ed25519 on Java 15+ and
+ * RFC 8032 pure-Java fallback on Java 8-14, with zero third-party cryptography dependencies.
  */
 public final class AttestationVerifier {
-    private static final byte[] ED25519_SPKI_PREFIX = Hex.decode("302a300506032b6570032100");
     public static final long DEFAULT_CLOCK_SKEW_SECONDS = 30L;
 
     public enum FailureCode {
@@ -53,7 +49,24 @@ public final class AttestationVerifier {
         VERSION_REVOKED
     }
 
-    public record VerificationResult(boolean valid, FailureCode failureCode, String detail, AttestationToken token) {
+    public static final class VerificationResult {
+        private final boolean valid;
+        private final FailureCode failureCode;
+        private final String detail;
+        private final AttestationToken token;
+
+        public VerificationResult(boolean valid, FailureCode failureCode, String detail, AttestationToken token) {
+            this.valid = valid;
+            this.failureCode = failureCode;
+            this.detail = detail;
+            this.token = token;
+        }
+
+        public boolean valid() { return valid; }
+        public FailureCode failureCode() { return failureCode; }
+        public String detail() { return detail; }
+        public AttestationToken token() { return token; }
+
         public static VerificationResult ok(AttestationToken token) {
             return new VerificationResult(true, null, null, token);
         }
@@ -72,8 +85,8 @@ public final class AttestationVerifier {
     }
 
     public AttestationVerifier(Map<String, PublicKey> publicKeys, Set<String> revokedVersions, long clockSkewSeconds) {
-        this.publicKeys = Collections.unmodifiableMap(new HashMap<>(publicKeys));
-        this.revokedVersions = Collections.unmodifiableSet(new HashSet<>(revokedVersions));
+        this.publicKeys = Collections.unmodifiableMap(new HashMap<String, PublicKey>(publicKeys));
+        this.revokedVersions = Collections.unmodifiableSet(new HashSet<String>(revokedVersions));
         this.clockSkewSeconds = Math.max(0L, clockSkewSeconds);
     }
 
@@ -86,34 +99,19 @@ public final class AttestationVerifier {
     }
 
     public static PublicKey parsePublicKeyBytes(byte[] keyBytes) {
-        byte[] spki;
-        if (keyBytes.length == 32) {
-            spki = new byte[ED25519_SPKI_PREFIX.length + 32];
-            System.arraycopy(ED25519_SPKI_PREFIX, 0, spki, 0, ED25519_SPKI_PREFIX.length);
-            System.arraycopy(keyBytes, 0, spki, ED25519_SPKI_PREFIX.length, 32);
-        } else if (keyBytes.length == ED25519_SPKI_PREFIX.length + 32) {
-            spki = keyBytes;
-        } else {
-            throw new IllegalArgumentException("Invalid Ed25519 public key length: " + keyBytes.length);
-        }
-        try {
-            KeyFactory kf = KeyFactory.getInstance("Ed25519");
-            return kf.generatePublic(new X509EncodedKeySpec(spki));
-        } catch (GeneralSecurityException e) {
-            throw new IllegalArgumentException("Failed to decode Ed25519 public key", e);
-        }
+        return PureEd25519.parsePublicKeyBytes(keyBytes);
     }
 
     public static AttestationVerifier fromBase64Keys(Map<String, String> keyIdToBase64, Set<String> revokedVersions) {
-        Map<String, PublicKey> keys = new HashMap<>();
+        Map<String, PublicKey> keys = new HashMap<String, PublicKey>();
         if (keyIdToBase64 != null) {
             for (Map.Entry<String, String> entry : keyIdToBase64.entrySet()) {
-                if (entry.getKey() != null && entry.getValue() != null && !entry.getValue().isBlank()) {
+                if (entry.getKey() != null && !Java8Compat.isBlank(entry.getValue())) {
                     keys.put(entry.getKey(), parsePublicKeyBase64(entry.getValue()));
                 }
             }
         }
-        return new AttestationVerifier(keys, revokedVersions == null ? Set.of() : revokedVersions);
+        return new AttestationVerifier(keys, revokedVersions == null ? Collections.<String>emptySet() : revokedVersions);
     }
 
     public VerificationResult verifyBase64(
@@ -144,7 +142,7 @@ public final class AttestationVerifier {
             return VerificationResult.fail(FailureCode.UNKNOWN_KEY_ID, "Unknown key_id: " + token.keyId());
         }
 
-        if (!verifyEd25519(pubKey, token.signedPayloadBytes(), token.signature())) {
+        if (!PureEd25519.verify(pubKey, token.signedPayloadBytes(), token.signature())) {
             return VerificationResult.fail(FailureCode.INVALID_SIGNATURE, "Ed25519 signature verification failed");
         }
 
@@ -166,7 +164,7 @@ public final class AttestationVerifier {
             return VerificationResult.fail(FailureCode.NONCE_MISMATCH, "Token nonce mismatch");
         }
 
-        if (expectedServerAddress != null && !expectedServerAddress.isBlank()) {
+        if (!Java8Compat.isBlank(expectedServerAddress)) {
             String expectedNorm = ServerAddressNormalizer.normalize(expectedServerAddress);
             String tokenNorm = ServerAddressNormalizer.normalize(token.serverAddress());
             if (!expectedNorm.equals(tokenNorm)) {
@@ -185,16 +183,5 @@ public final class AttestationVerifier {
         }
 
         return VerificationResult.ok(token);
-    }
-
-    private static boolean verifyEd25519(PublicKey publicKey, byte[] payload, byte[] signature) {
-        try {
-            Signature sig = Signature.getInstance("Ed25519");
-            sig.initVerify(publicKey);
-            sig.update(payload);
-            return sig.verify(signature);
-        } catch (GeneralSecurityException e) {
-            return false;
-        }
     }
 }

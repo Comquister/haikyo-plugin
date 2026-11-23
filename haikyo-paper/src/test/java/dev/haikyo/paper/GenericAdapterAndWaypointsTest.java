@@ -99,22 +99,60 @@ class GenericAdapterAndWaypointsTest {
     }
 
     @Test
-    void foliaStrictSafetyNoBukkitSchedulerCalls() throws Exception {
+    void foliaStrictSafetyAndMultiVersionCompatibility() throws Exception {
         Path paperSrc = Path.of("src/main/java");
         try (var stream = Files.walk(paperSrc)) {
             List<Path> javaFiles = stream.filter(p -> p.toString().endsWith(".java")).toList();
             assertFalse(javaFiles.isEmpty());
             for (Path f : javaFiles) {
                 String src = Files.readString(f, StandardCharsets.UTF_8);
-                // Strip comments before checking for Bukkit.getScheduler()
+                // Strip comments before scanning
                 String noBlockComments = src.replaceAll("(?s)/\\*.*?\\*/", "");
                 String noLineComments = noBlockComments.replaceAll("(?m)//.*$", "");
+                boolean isCompatScheduler = f.getFileName().toString().equals("PlatformScheduler.java");
+                if (!isCompatScheduler) {
+                    assertFalse(
+                            noLineComments.contains("Bukkit.getScheduler()") || noLineComments.contains("getServer().getScheduler()"),
+                            "Forbidden Bukkit.getScheduler() call found outside PlatformScheduler: " + f
+                    );
+                }
                 assertFalse(
-                        noLineComments.contains("Bukkit.getScheduler()") || noLineComments.contains("getServer().getScheduler()"),
-                        "Forbidden Bukkit.getScheduler() call found in Folia-compatible source: " + f
+                        noLineComments.contains("import io.papermc.paper."),
+                        "Direct Paper-only import breaks 1.8-1.19 Spigot/CraftBukkit compatibility: " + f
+                );
+                assertFalse(
+                        noLineComments.contains("import net.kyori.adventure."),
+                        "Direct Adventure import breaks 1.8-1.16.4/Spigot compatibility: " + f
                 );
             }
         }
+
+        // On Paper 26.3 test classpath, reflection must detect regionized Folia/Paper schedulers cleanly
+        assertTrue(dev.haikyo.paper.compat.PlatformScheduler.isRegionizedSchedulerAvailable(),
+                "PlatformScheduler must detect Paper/Folia regionized schedulers on modern Paper");
+
+        // Verify Java 8 bytecode (major version <= 52) across paper, core, and api for MC 1.8 compatibility
+        for (Class<?> cls : List.of(
+                HaikyoPaperPlugin.class,
+                dev.haikyo.paper.compat.PlatformCompat.class,
+                dev.haikyo.paper.compat.PlatformScheduler.class,
+                TrustManager.class,
+                dev.haikyo.api.HaikyoApi.class
+        )) {
+            String res = "/" + cls.getName().replace('.', '/') + ".class";
+            try (var in = cls.getResourceAsStream(res)) {
+                assertNotNull(in, "Class resource missing for " + cls.getName());
+                byte[] header = in.readNBytes(8);
+                int majorVersion = ((header[6] & 0xFF) << 8) | (header[7] & 0xFF);
+                assertTrue(majorVersion <= 52,
+                        cls.getName() + " must target Java 8 bytecode (<= 52) for MC 1.8 support, got " + majorVersion);
+            }
+        }
+
+        // Verify plugin.yml declares universal multi-version api-version 1.13 + folia-supported
+        String pluginYml = Files.readString(Path.of("src/main/resources/plugin.yml"), StandardCharsets.UTF_8);
+        assertTrue(pluginYml.contains("api-version: '1.13'"), "plugin.yml should use api-version: '1.13' for 1.8-26.3 compatibility");
+        assertTrue(pluginYml.contains("folia-supported: true"), "plugin.yml must keep folia-supported: true");
     }
 
     @Test

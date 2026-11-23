@@ -17,6 +17,8 @@
  */
 package dev.haikyo.core.admin;
 
+import dev.haikyo.core.util.Java8Compat;
+
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -27,6 +29,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 
@@ -64,14 +67,14 @@ public final class AuditLogger {
                 + " | actor=" + sanitize(actor)
                 + " | target=" + sanitize(targetName) + "(" + (targetUuid == null ? "-" : targetUuid) + ")"
                 + " | action=" + sanitize(action)
-                + (detail == null || detail.isBlank() ? "" : " | detail=" + sanitize(detail))
+                + (Java8Compat.isBlank(detail) ? "" : " | detail=" + sanitize(detail))
                 + "\n";
         try {
             Path parent = logFile.getParent();
             if (parent != null) {
                 Files.createDirectories(parent);
             }
-            Files.writeString(
+            Java8Compat.writeString(
                     logFile,
                     line,
                     StandardCharsets.UTF_8,
@@ -94,7 +97,7 @@ public final class AuditLogger {
         Instant cutoff = clock.instant().minus(Duration.ofDays(retentionDays));
         try {
             List<String> lines = Files.readAllLines(logFile, StandardCharsets.UTF_8);
-            List<String> kept = new ArrayList<>(lines.size());
+            List<String> kept = new ArrayList<String>(lines.size());
             int pruned = 0;
             for (String line : lines) {
                 int pipe = line.indexOf(" | ");
@@ -113,7 +116,7 @@ public final class AuditLogger {
             if (pruned > 0) {
                 Path tmp = logFile.resolveSibling(logFile.getFileName().toString() + ".tmp");
                 String content = kept.isEmpty() ? "" : String.join("\n", kept) + "\n";
-                Files.writeString(tmp, content, StandardCharsets.UTF_8);
+                Java8Compat.writeString(tmp, content, StandardCharsets.UTF_8);
                 Files.move(tmp, logFile, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
             }
             return pruned;
@@ -124,7 +127,7 @@ public final class AuditLogger {
 
     public synchronized List<String> readAllLines() throws IOException {
         if (logFile == null || !Files.isRegularFile(logFile)) {
-            return List.of();
+            return Collections.emptyList();
         }
         return Files.readAllLines(logFile, StandardCharsets.UTF_8);
     }

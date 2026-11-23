@@ -24,18 +24,56 @@ import java.util.UUID;
 /**
  * Event emitted whenever a player's Haikyo {@link TrustLevel} transitions.
  */
-public record TrustChangeEvent(
-        UUID playerId,
-        TrustLevel previous,
-        TrustLevel current,
-        String reason,
-        Instant timestamp
-) {
-    public TrustChangeEvent {
-        Objects.requireNonNull(playerId, "playerId");
-        Objects.requireNonNull(previous, "previous");
-        Objects.requireNonNull(current, "current");
-        Objects.requireNonNull(timestamp, "timestamp");
-        reason = reason == null ? "" : reason;
+public final class TrustChangeEvent {
+    private final UUID playerId;
+    private final TrustLevel previous;
+    private final TrustLevel current;
+    private final String reason;
+    private final Instant timestamp;
+
+    public TrustChangeEvent(
+            UUID playerId,
+            TrustLevel previous,
+            TrustLevel current,
+            String reason,
+            Instant timestamp
+    ) {
+        this.playerId = Objects.requireNonNull(playerId, "playerId");
+        this.previous = Objects.requireNonNull(previous, "previous");
+        this.current = Objects.requireNonNull(current, "current");
+        this.reason = reason == null ? "" : reason;
+        this.timestamp = Objects.requireNonNull(timestamp, "timestamp");
+    }
+
+    public UUID playerId() { return playerId; }
+    public TrustLevel previous() { return previous; }
+    public TrustLevel current() { return current; }
+    public String reason() { return reason; }
+    public Instant timestamp() { return timestamp; }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof TrustChangeEvent)) return false;
+        TrustChangeEvent that = (TrustChangeEvent) o;
+        return Objects.equals(playerId, that.playerId)
+                && previous == that.previous
+                && current == that.current
+                && Objects.equals(reason, that.reason)
+                && Objects.equals(timestamp, that.timestamp);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(playerId, previous, current, reason, timestamp);
+    }
+
+    @Override
+    public String toString() {
+        return "TrustChangeEvent[playerId=" + playerId
+                + ", previous=" + previous
+                + ", current=" + current
+                + ", reason=" + reason
+                + ", timestamp=" + timestamp + "]";
     }
 }

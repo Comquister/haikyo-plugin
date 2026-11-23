@@ -18,6 +18,7 @@
 package dev.haikyo.paper.anticheat;
 
 import dev.haikyo.core.trust.TrustManager;
+import dev.haikyo.core.util.Java8Compat;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.event.Cancellable;
@@ -62,15 +63,16 @@ public final class VulcanAdapter implements Listener {
                 try {
                     Object playerObj = getPlayer.invoke(event);
                     Object checkObj = getCheck.invoke(event);
-                    if (!(playerObj instanceof Player player) || checkObj == null) {
+                    if (!(playerObj instanceof Player) || checkObj == null) {
                         return;
                     }
+                    Player player = (Player) playerObj;
                     String checkName = extractCheckName(checkObj);
                     TrustManager.FlagDecision decision = trustManager.evaluateFlag(
                             player.getUniqueId(), "vulcan", checkName
                     );
-                    if (decision.cancelFlag() && event instanceof Cancellable cancellable) {
-                        cancellable.setCancelled(true);
+                    if (decision.cancelFlag() && event instanceof Cancellable) {
+                        ((Cancellable) event).setCancelled(true);
                     }
                 } catch (ReflectiveOperationException ignored) {
                 }
@@ -99,7 +101,7 @@ public final class VulcanAdapter implements Listener {
             try {
                 Method getType = checkObj.getClass().getMethod("getType");
                 Object type = getType.invoke(checkObj);
-                if (type != null && !type.toString().isBlank()) {
+                if (type != null && !Java8Compat.isBlank(type.toString())) {
                     return base + type;
                 }
             } catch (NoSuchMethodException ignored) {

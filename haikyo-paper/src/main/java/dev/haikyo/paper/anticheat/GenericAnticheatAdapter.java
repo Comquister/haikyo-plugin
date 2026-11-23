@@ -19,6 +19,7 @@ package dev.haikyo.paper.anticheat;
 
 import dev.haikyo.core.config.HaikyoConfig;
 import dev.haikyo.core.trust.TrustManager;
+import dev.haikyo.core.util.Java8Compat;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -64,13 +65,13 @@ public final class GenericAnticheatAdapter implements Listener {
             List<String> patterns,
             java.util.function.Function<String, UUID> playerLookup
     ) {
-        if (commandLine == null || commandLine.isBlank() || patterns == null || patterns.isEmpty()) {
+        if (Java8Compat.isBlank(commandLine) || patterns == null || patterns.isEmpty()) {
             return false;
         }
         String trimmed = commandLine.startsWith("/") ? commandLine.substring(1).trim() : commandLine.trim();
         String lower = trimmed.toLowerCase(Locale.ROOT);
         for (String rawPattern : patterns) {
-            if (rawPattern == null || rawPattern.isBlank()) {
+            if (Java8Compat.isBlank(rawPattern)) {
                 continue;
             }
             String prefix = rawPattern;

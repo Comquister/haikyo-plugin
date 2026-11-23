@@ -17,6 +17,8 @@
  */
 package dev.haikyo.api;
 
+import java.util.Locale;
+
 /**
  * Trust level assigned by Haikyo to an online player session.
  */
@@ -39,26 +41,33 @@ public enum TrustLevel {
     }
 
     public static TrustLevel fromWireId(int id) {
-        return switch (id) {
-            case 0 -> NONE;
-            case 1 -> ATTESTED;
-            case 2 -> SUSPECT;
-            default -> throw new IllegalArgumentException("Unknown TrustLevel wire id: " + id);
-        };
+        switch (id) {
+            case 0:
+                return NONE;
+            case 1:
+                return ATTESTED;
+            case 2:
+                return SUSPECT;
+            default:
+                throw new IllegalArgumentException("Unknown TrustLevel wire id: " + id);
+        }
     }
 
     public static TrustLevel fromWireName(String name) {
         if (name == null) {
             return NONE;
         }
-        return switch (name.toLowerCase(java.util.Locale.ROOT)) {
-            case "attested" -> ATTESTED;
-            case "suspect" -> SUSPECT;
-            default -> NONE;
-        };
+        String lower = name.toLowerCase(Locale.ROOT);
+        if ("attested".equals(lower)) {
+            return ATTESTED;
+        }
+        if ("suspect".equals(lower)) {
+            return SUSPECT;
+        }
+        return NONE;
     }
 
     public String wireName() {
-        return name().toLowerCase(java.util.Locale.ROOT);
+        return name().toLowerCase(Locale.ROOT);
     }
 }

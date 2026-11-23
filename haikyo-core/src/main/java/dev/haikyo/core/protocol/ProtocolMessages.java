@@ -21,6 +21,7 @@ import dev.haikyo.api.TrustLevel;
 import dev.haikyo.core.crypto.HaikyoLinkCodec;
 import dev.haikyo.core.mods.ModRule;
 import dev.haikyo.core.util.Hex;
+import dev.haikyo.core.util.Java8Compat;
 import dev.haikyo.core.util.JsonCodec;
 
 import java.io.ByteArrayOutputStream;
@@ -58,19 +59,51 @@ public final class ProtocolMessages {
     private ProtocolMessages() {
     }
 
-    public record Hello(
-            int protocolVersion,
-            String serverRole,
-            String serverId,
-            String pluginVersion,
-            boolean requireHaikyo,
-            Map<String, Integer> channels,
-            List<String> modChannels,
-            List<String> consentScopes,
-            String downloadUrl
-    ) {
+    public static final class Hello {
+        private final int protocolVersion;
+        private final String serverRole;
+        private final String serverId;
+        private final String pluginVersion;
+        private final boolean requireHaikyo;
+        private final Map<String, Integer> channels;
+        private final List<String> modChannels;
+        private final List<String> consentScopes;
+        private final String downloadUrl;
+
+        public Hello(
+                int protocolVersion,
+                String serverRole,
+                String serverId,
+                String pluginVersion,
+                boolean requireHaikyo,
+                Map<String, Integer> channels,
+                List<String> modChannels,
+                List<String> consentScopes,
+                String downloadUrl
+        ) {
+            this.protocolVersion = protocolVersion;
+            this.serverRole = serverRole;
+            this.serverId = serverId;
+            this.pluginVersion = pluginVersion;
+            this.requireHaikyo = requireHaikyo;
+            this.channels = channels;
+            this.modChannels = modChannels;
+            this.consentScopes = consentScopes;
+            this.downloadUrl = downloadUrl;
+        }
+
+        public int protocolVersion() { return protocolVersion; }
+        public String serverRole() { return serverRole; }
+        public String serverId() { return serverId; }
+        public String pluginVersion() { return pluginVersion; }
+        public boolean requireHaikyo() { return requireHaikyo; }
+        public Map<String, Integer> channels() { return channels; }
+        public List<String> modChannels() { return modChannels; }
+        public List<String> consentScopes() { return consentScopes; }
+        public String downloadUrl() { return downloadUrl; }
+
         public byte[] encodeJson() {
-            Map<String, Object> m = new LinkedHashMap<>();
+            Map<String, Object> m = new LinkedHashMap<String, Object>();
             m.put("protocol_version", protocolVersion);
             m.put("server_role", serverRole);
             m.put("server_id", serverId);
@@ -85,10 +118,10 @@ public final class ProtocolMessages {
 
         public static Hello decodeJson(byte[] body) {
             Map<String, Object> m = JsonCodec.parseObject(new String(body, StandardCharsets.UTF_8));
-            Map<String, Integer> ch = new LinkedHashMap<>();
+            Map<String, Integer> ch = new LinkedHashMap<String, Integer>();
             for (Map.Entry<String, Object> e : JsonCodec.asObject(m, "channels").entrySet()) {
-                if (e.getValue() instanceof Number n) {
-                    ch.put(e.getKey(), n.intValue());
+                if (e.getValue() instanceof Number) {
+                    ch.put(e.getKey(), ((Number) e.getValue()).intValue());
                 }
             }
             return new Hello(
@@ -105,16 +138,39 @@ public final class ProtocolMessages {
         }
     }
 
-    public record HelloAck(
-            int protocolVersion,
-            String clientVersion,
-            String channel,
-            Map<String, Integer> channels,
-            List<String> modChannels,
-            List<String> consentedScopes
-    ) {
+    public static final class HelloAck {
+        private final int protocolVersion;
+        private final String clientVersion;
+        private final String channel;
+        private final Map<String, Integer> channels;
+        private final List<String> modChannels;
+        private final List<String> consentedScopes;
+
+        public HelloAck(
+                int protocolVersion,
+                String clientVersion,
+                String channel,
+                Map<String, Integer> channels,
+                List<String> modChannels,
+                List<String> consentedScopes
+        ) {
+            this.protocolVersion = protocolVersion;
+            this.clientVersion = clientVersion;
+            this.channel = channel;
+            this.channels = channels;
+            this.modChannels = modChannels;
+            this.consentedScopes = consentedScopes;
+        }
+
+        public int protocolVersion() { return protocolVersion; }
+        public String clientVersion() { return clientVersion; }
+        public String channel() { return channel; }
+        public Map<String, Integer> channels() { return channels; }
+        public List<String> modChannels() { return modChannels; }
+        public List<String> consentedScopes() { return consentedScopes; }
+
         public byte[] encodeJson() {
-            Map<String, Object> m = new LinkedHashMap<>();
+            Map<String, Object> m = new LinkedHashMap<String, Object>();
             m.put("protocol_version", protocolVersion);
             m.put("client_version", clientVersion);
             m.put("channel", channel);
@@ -126,10 +182,10 @@ public final class ProtocolMessages {
 
         public static HelloAck decodeJson(byte[] body) {
             Map<String, Object> m = JsonCodec.parseObject(new String(body, StandardCharsets.UTF_8));
-            Map<String, Integer> ch = new LinkedHashMap<>();
+            Map<String, Integer> ch = new LinkedHashMap<String, Integer>();
             for (Map.Entry<String, Object> e : JsonCodec.asObject(m, "channels").entrySet()) {
-                if (e.getValue() instanceof Number n) {
-                    ch.put(e.getKey(), n.intValue());
+                if (e.getValue() instanceof Number) {
+                    ch.put(e.getKey(), ((Number) e.getValue()).intValue());
                 }
             }
             return new HelloAck(
@@ -143,15 +199,35 @@ public final class ProtocolMessages {
         }
     }
 
-    public record AttestChallenge(
-            String nonceHex,
-            String serverAddress,
-            String sessionKeyHex,
-            int reportIntervalMinSeconds,
-            int reportIntervalMaxSeconds
-    ) {
+    public static final class AttestChallenge {
+        private final String nonceHex;
+        private final String serverAddress;
+        private final String sessionKeyHex;
+        private final int reportIntervalMinSeconds;
+        private final int reportIntervalMaxSeconds;
+
+        public AttestChallenge(
+                String nonceHex,
+                String serverAddress,
+                String sessionKeyHex,
+                int reportIntervalMinSeconds,
+                int reportIntervalMaxSeconds
+        ) {
+            this.nonceHex = nonceHex;
+            this.serverAddress = serverAddress;
+            this.sessionKeyHex = sessionKeyHex;
+            this.reportIntervalMinSeconds = reportIntervalMinSeconds;
+            this.reportIntervalMaxSeconds = reportIntervalMaxSeconds;
+        }
+
+        public String nonceHex() { return nonceHex; }
+        public String serverAddress() { return serverAddress; }
+        public String sessionKeyHex() { return sessionKeyHex; }
+        public int reportIntervalMinSeconds() { return reportIntervalMinSeconds; }
+        public int reportIntervalMaxSeconds() { return reportIntervalMaxSeconds; }
+
         public byte[] encodeJson() {
-            Map<String, Object> m = new LinkedHashMap<>();
+            Map<String, Object> m = new LinkedHashMap<String, Object>();
             m.put("nonce", nonceHex);
             m.put("server_address", serverAddress);
             m.put("session_key", sessionKeyHex);
@@ -172,9 +248,20 @@ public final class ProtocolMessages {
         }
     }
 
-    public record AttestResponse(String tokenBase64, String error) {
+    public static final class AttestResponse {
+        private final String tokenBase64;
+        private final String error;
+
+        public AttestResponse(String tokenBase64, String error) {
+            this.tokenBase64 = tokenBase64;
+            this.error = error;
+        }
+
+        public String tokenBase64() { return tokenBase64; }
+        public String error() { return error; }
+
         public byte[] encodeJson() {
-            Map<String, Object> m = new LinkedHashMap<>();
+            Map<String, Object> m = new LinkedHashMap<String, Object>();
             m.put("token", tokenBase64);
             m.put("error", error);
             return JsonCodec.stringify(m).getBytes(StandardCharsets.UTF_8);
@@ -189,9 +276,23 @@ public final class ProtocolMessages {
         }
     }
 
-    public record AttestResult(boolean accepted, TrustLevel trustLevel, String reason) {
+    public static final class AttestResult {
+        private final boolean accepted;
+        private final TrustLevel trustLevel;
+        private final String reason;
+
+        public AttestResult(boolean accepted, TrustLevel trustLevel, String reason) {
+            this.accepted = accepted;
+            this.trustLevel = trustLevel;
+            this.reason = reason;
+        }
+
+        public boolean accepted() { return accepted; }
+        public TrustLevel trustLevel() { return trustLevel; }
+        public String reason() { return reason; }
+
         public byte[] encodeJson() {
-            Map<String, Object> m = new LinkedHashMap<>();
+            Map<String, Object> m = new LinkedHashMap<String, Object>();
             m.put("accepted", accepted);
             m.put("trust_level", trustLevel.wireName());
             m.put("reason", reason);
@@ -208,22 +309,54 @@ public final class ProtocolMessages {
         }
     }
 
-    public record ReportedModState(boolean enabled, Map<String, Object> params) {
-        public ReportedModState {
-            params = params == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(params));
+    public static final class ReportedModState {
+        private final boolean enabled;
+        private final Map<String, Object> params;
+
+        public ReportedModState(boolean enabled, Map<String, Object> params) {
+            this.enabled = enabled;
+            this.params = params == null
+                    ? Collections.<String, Object>emptyMap()
+                    : Collections.unmodifiableMap(new LinkedHashMap<String, Object>(params));
         }
+
+        public boolean enabled() { return enabled; }
+        public Map<String, Object> params() { return params; }
     }
 
-    public record IntegrityReport(
-            long seq,
-            long timestamp,
-            Map<String, ReportedModState> mods,
-            boolean agentControl,
-            List<String> signals,
-            String hmacHex
-    ) {
+    public static final class IntegrityReport {
+        private final long seq;
+        private final long timestamp;
+        private final Map<String, ReportedModState> mods;
+        private final boolean agentControl;
+        private final List<String> signals;
+        private final String hmacHex;
+
+        public IntegrityReport(
+                long seq,
+                long timestamp,
+                Map<String, ReportedModState> mods,
+                boolean agentControl,
+                List<String> signals,
+                String hmacHex
+        ) {
+            this.seq = seq;
+            this.timestamp = timestamp;
+            this.mods = mods;
+            this.agentControl = agentControl;
+            this.signals = signals;
+            this.hmacHex = hmacHex;
+        }
+
+        public long seq() { return seq; }
+        public long timestamp() { return timestamp; }
+        public Map<String, ReportedModState> mods() { return mods; }
+        public boolean agentControl() { return agentControl; }
+        public List<String> signals() { return signals; }
+        public String hmacHex() { return hmacHex; }
+
         public String canonicalSigningInput() {
-            TreeMap<String, ReportedModState> sortedMods = new TreeMap<>(mods);
+            TreeMap<String, ReportedModState> sortedMods = new TreeMap<String, ReportedModState>(mods);
             StringBuilder modsCanon = new StringBuilder();
             boolean firstMod = true;
             for (Map.Entry<String, ReportedModState> e : sortedMods.entrySet()) {
@@ -235,7 +368,7 @@ public final class ProtocolMessages {
                 Map<String, Object> p = e.getValue().params();
                 if (!p.isEmpty()) {
                     modsCanon.append(':');
-                    TreeMap<String, Object> sortedParams = new TreeMap<>(p);
+                    TreeMap<String, Object> sortedParams = new TreeMap<String, Object>(p);
                     boolean firstParam = true;
                     for (Map.Entry<String, Object> pe : sortedParams.entrySet()) {
                         if (!firstParam) {
@@ -247,7 +380,7 @@ public final class ProtocolMessages {
                 }
             }
 
-            List<String> sortedSignals = new ArrayList<>(signals);
+            List<String> sortedSignals = new ArrayList<String>(signals);
             Collections.sort(sortedSignals);
             String signalsCanon = String.join(",", sortedSignals);
 
@@ -282,11 +415,11 @@ public final class ProtocolMessages {
 
         public static IntegrityReport decodeJson(byte[] body) {
             Map<String, Object> m = JsonCodec.parseObject(new String(body, StandardCharsets.UTF_8));
-            Map<String, ReportedModState> mods = new LinkedHashMap<>();
+            Map<String, ReportedModState> mods = new LinkedHashMap<String, ReportedModState>();
             for (Map.Entry<String, Object> e : JsonCodec.asObject(m, "mods").entrySet()) {
-                if (e.getValue() instanceof Map<?, ?> rawMod) {
+                if (e.getValue() instanceof Map<?, ?>) {
                     @SuppressWarnings("unchecked")
-                    Map<String, Object> modObj = (Map<String, Object>) rawMod;
+                    Map<String, Object> modObj = (Map<String, Object>) e.getValue();
                     boolean enabled = JsonCodec.asBoolean(modObj, "enabled", false);
                     Map<String, Object> params = JsonCodec.asObject(modObj, "params");
                     mods.put(e.getKey(), new ReportedModState(enabled, params));
@@ -303,33 +436,41 @@ public final class ProtocolMessages {
         }
     }
 
-    public record ModsRulesMessage(Map<String, ModRule> rules) {
+    public static final class ModsRulesMessage {
+        private final Map<String, ModRule> rules;
+
+        public ModsRulesMessage(Map<String, ModRule> rules) {
+            this.rules = rules;
+        }
+
+        public Map<String, ModRule> rules() { return rules; }
+
         public byte[] encodeJson() {
-            Map<String, Object> rulesMap = new LinkedHashMap<>();
+            Map<String, Object> rulesMap = new LinkedHashMap<String, Object>();
             for (Map.Entry<String, ModRule> entry : rules.entrySet()) {
                 ModRule r = entry.getValue();
-                Map<String, Object> ruleObj = new LinkedHashMap<>();
+                Map<String, Object> ruleObj = new LinkedHashMap<String, Object>();
                 ruleObj.put("action", r.action().wireName());
                 if (!r.params().isEmpty()) {
                     ruleObj.put("params", r.params());
                 }
-                if (r.reason() != null && !r.reason().isBlank()) {
+                if (!Java8Compat.isBlank(r.reason())) {
                     ruleObj.put("reason", r.reason());
                 }
                 rulesMap.put(entry.getKey(), ruleObj);
             }
-            Map<String, Object> root = new LinkedHashMap<>();
+            Map<String, Object> root = new LinkedHashMap<String, Object>();
             root.put("rules", rulesMap);
             return JsonCodec.stringify(root).getBytes(StandardCharsets.UTF_8);
         }
 
         public static ModsRulesMessage decodeJson(byte[] body) {
             Map<String, Object> root = JsonCodec.parseObject(new String(body, StandardCharsets.UTF_8));
-            Map<String, ModRule> rules = new LinkedHashMap<>();
+            Map<String, ModRule> rules = new LinkedHashMap<String, ModRule>();
             for (Map.Entry<String, Object> entry : JsonCodec.asObject(root, "rules").entrySet()) {
-                if (entry.getValue() instanceof Map<?, ?> rawRule) {
+                if (entry.getValue() instanceof Map<?, ?>) {
                     @SuppressWarnings("unchecked")
-                    Map<String, Object> ruleObj = (Map<String, Object>) rawRule;
+                    Map<String, Object> ruleObj = (Map<String, Object>) entry.getValue();
                     ModRule.Action action = ModRule.Action.fromWireName(JsonCodec.asString(ruleObj, "action", "allow"));
                     Map<String, Object> params = JsonCodec.asObject(ruleObj, "params");
                     String reason = JsonCodec.asNullableString(ruleObj, "reason");
@@ -340,13 +481,44 @@ public final class ProtocolMessages {
         }
     }
 
-    public record AcInputSample(int flags, float yawDelta, float pitchDelta) {
+    public static final class AcInputSample {
+        private final int flags;
+        private final float yawDelta;
+        private final float pitchDelta;
+
+        public AcInputSample(int flags, float yawDelta, float pitchDelta) {
+            this.flags = flags;
+            this.yawDelta = yawDelta;
+            this.pitchDelta = pitchDelta;
+        }
+
+        public int flags() { return flags; }
+        public float yawDelta() { return yawDelta; }
+        public float pitchDelta() { return pitchDelta; }
+
         public boolean hasFlag(int bit) {
             return (flags & bit) != 0;
         }
     }
 
-    public record AcInputsPacket(long seq, long tick, List<AcInputSample> samples, byte[] hmac) {
+    public static final class AcInputsPacket {
+        private final long seq;
+        private final long tick;
+        private final List<AcInputSample> samples;
+        private final byte[] hmac;
+
+        public AcInputsPacket(long seq, long tick, List<AcInputSample> samples, byte[] hmac) {
+            this.seq = seq;
+            this.tick = tick;
+            this.samples = samples;
+            this.hmac = hmac;
+        }
+
+        public long seq() { return seq; }
+        public long tick() { return tick; }
+        public List<AcInputSample> samples() { return samples; }
+        public byte[] hmac() { return hmac; }
+
         public static byte[] encode(long seq, long tick, List<AcInputSample> samples, byte[] sessionKey) {
             if (samples == null || samples.isEmpty() || samples.size() > AC_MAX_SAMPLES) {
                 throw new IllegalArgumentException("ac_inputs sample count must be in 1..20");
@@ -393,15 +565,15 @@ public final class ProtocolMessages {
             if (!Hex.constantTimeEquals(receivedHmac, expectedHmac)) {
                 throw new SecurityException("ac_inputs HMAC-SHA256 mismatch");
             }
-            List<AcInputSample> samples = new ArrayList<>(count);
+            List<AcInputSample> samples = new ArrayList<AcInputSample>(count);
             for (int i = 0; i < count; i++) {
                 int flags = Short.toUnsignedInt(buf.getShort());
-                buf.getShort(); // reserved
+                buf.getShort();
                 float yawDelta = buf.getFloat();
                 float pitchDelta = buf.getFloat();
                 samples.add(new AcInputSample(flags, yawDelta, pitchDelta));
             }
-            return new AcInputsPacket(seq, tick, List.copyOf(samples), receivedHmac);
+            return new AcInputsPacket(seq, tick, Java8Compat.copyOfList(samples), receivedHmac);
         }
 
         private static byte[] computeAcHmac(byte[] sessionKey, byte[] bodyWithoutHmac) {
@@ -412,21 +584,43 @@ public final class ProtocolMessages {
         }
     }
 
-    // -------------------------------------------------------------------------
-    // Phase 7: haikyo:admin (0x01..0x04)
-    // -------------------------------------------------------------------------
+    public static final class AdminRequest {
+        private final String requestId;
+        private final String kind;
+        private final String hwidSalt;
+        private final Integer maxWidth;
+        private final Integer maxHeight;
+        private final Integer jpegQuality;
+        private final Integer maxBytes;
 
-    public record AdminRequest(
-            String requestId,
-            String kind,
-            String hwidSalt,
-            Integer maxWidth,
-            Integer maxHeight,
-            Integer jpegQuality,
-            Integer maxBytes
-    ) {
+        public AdminRequest(
+                String requestId,
+                String kind,
+                String hwidSalt,
+                Integer maxWidth,
+                Integer maxHeight,
+                Integer jpegQuality,
+                Integer maxBytes
+        ) {
+            this.requestId = requestId;
+            this.kind = kind;
+            this.hwidSalt = hwidSalt;
+            this.maxWidth = maxWidth;
+            this.maxHeight = maxHeight;
+            this.jpegQuality = jpegQuality;
+            this.maxBytes = maxBytes;
+        }
+
+        public String requestId() { return requestId; }
+        public String kind() { return kind; }
+        public String hwidSalt() { return hwidSalt; }
+        public Integer maxWidth() { return maxWidth; }
+        public Integer maxHeight() { return maxHeight; }
+        public Integer jpegQuality() { return jpegQuality; }
+        public Integer maxBytes() { return maxBytes; }
+
         public byte[] encodeJson() {
-            Map<String, Object> m = new LinkedHashMap<>();
+            Map<String, Object> m = new LinkedHashMap<String, Object>();
             m.put("request_id", requestId);
             m.put("kind", kind);
             if (hwidSalt != null && !hwidSalt.isEmpty()) {
@@ -449,38 +643,95 @@ public final class ProtocolMessages {
 
         public static AdminRequest decodeJson(byte[] body) {
             Map<String, Object> m = JsonCodec.parseObject(new String(body, StandardCharsets.UTF_8));
+            Object mw = m.get("max_width");
+            Object mh = m.get("max_height");
+            Object jq = m.get("jpeg_quality");
+            Object mb = m.get("max_bytes");
             return new AdminRequest(
                     JsonCodec.asString(m, "request_id", ""),
                     JsonCodec.asString(m, "kind", ""),
                     JsonCodec.asNullableString(m, "hwid_salt"),
-                    m.get("max_width") instanceof Number n ? n.intValue() : null,
-                    m.get("max_height") instanceof Number n ? n.intValue() : null,
-                    m.get("jpeg_quality") instanceof Number n ? n.intValue() : null,
-                    m.get("max_bytes") instanceof Number n ? n.intValue() : null
+                    mw instanceof Number ? Integer.valueOf(((Number) mw).intValue()) : null,
+                    mh instanceof Number ? Integer.valueOf(((Number) mh).intValue()) : null,
+                    jq instanceof Number ? Integer.valueOf(((Number) jq).intValue()) : null,
+                    mb instanceof Number ? Integer.valueOf(((Number) mb).intValue()) : null
             );
         }
     }
 
-    public record AdminInfoResponse(
-            String requestId,
-            String error,
-            String version,
-            String channel,
-            String exeSha256,
-            String os,
-            String cpu,
-            String gpu,
-            long ramMb,
-            String display,
-            String language,
-            int avgFps,
-            String hwid,
-            boolean agentControl,
-            List<String> mods,
-            List<String> signals
-    ) {
+    public static final class AdminInfoResponse {
+        private final String requestId;
+        private final String error;
+        private final String version;
+        private final String channel;
+        private final String exeSha256;
+        private final String os;
+        private final String cpu;
+        private final String gpu;
+        private final long ramMb;
+        private final String display;
+        private final String language;
+        private final int avgFps;
+        private final String hwid;
+        private final boolean agentControl;
+        private final List<String> mods;
+        private final List<String> signals;
+
+        public AdminInfoResponse(
+                String requestId,
+                String error,
+                String version,
+                String channel,
+                String exeSha256,
+                String os,
+                String cpu,
+                String gpu,
+                long ramMb,
+                String display,
+                String language,
+                int avgFps,
+                String hwid,
+                boolean agentControl,
+                List<String> mods,
+                List<String> signals
+        ) {
+            this.requestId = requestId;
+            this.error = error;
+            this.version = version;
+            this.channel = channel;
+            this.exeSha256 = exeSha256;
+            this.os = os;
+            this.cpu = cpu;
+            this.gpu = gpu;
+            this.ramMb = ramMb;
+            this.display = display;
+            this.language = language;
+            this.avgFps = avgFps;
+            this.hwid = hwid;
+            this.agentControl = agentControl;
+            this.mods = mods;
+            this.signals = signals;
+        }
+
+        public String requestId() { return requestId; }
+        public String error() { return error; }
+        public String version() { return version; }
+        public String channel() { return channel; }
+        public String exeSha256() { return exeSha256; }
+        public String os() { return os; }
+        public String cpu() { return cpu; }
+        public String gpu() { return gpu; }
+        public long ramMb() { return ramMb; }
+        public String display() { return display; }
+        public String language() { return language; }
+        public int avgFps() { return avgFps; }
+        public String hwid() { return hwid; }
+        public boolean agentControl() { return agentControl; }
+        public List<String> mods() { return mods; }
+        public List<String> signals() { return signals; }
+
         public byte[] encodeJson() {
-            Map<String, Object> m = new LinkedHashMap<>();
+            Map<String, Object> m = new LinkedHashMap<String, Object>();
             m.put("request_id", requestId);
             m.put("error", error);
             m.put("version", version);
@@ -523,9 +774,23 @@ public final class ProtocolMessages {
         }
     }
 
-    public record AdminHwidResponse(String requestId, String error, String hwid) {
+    public static final class AdminHwidResponse {
+        private final String requestId;
+        private final String error;
+        private final String hwid;
+
+        public AdminHwidResponse(String requestId, String error, String hwid) {
+            this.requestId = requestId;
+            this.error = error;
+            this.hwid = hwid;
+        }
+
+        public String requestId() { return requestId; }
+        public String error() { return error; }
+        public String hwid() { return hwid; }
+
         public byte[] encodeJson() {
-            Map<String, Object> m = new LinkedHashMap<>();
+            Map<String, Object> m = new LinkedHashMap<String, Object>();
             m.put("request_id", requestId);
             m.put("error", error);
             m.put("hwid", hwid);
@@ -542,24 +807,46 @@ public final class ProtocolMessages {
         }
     }
 
-    /**
-     * Compact binary {@code haikyo:admin} {@code 0x04} screenshot response:
-     * {@code request_id:lp_str | status:u8 | error:lp_str | width:u16 | height:u16 | mime_type:lp_str | image_len:u32 | image_bytes}.
-     */
-    public record AdminScreenshotResponse(
-            String requestId,
-            int status,
-            String error,
-            int width,
-            int height,
-            String mimeType,
-            byte[] imageBytes
-    ) {
+    public static final class AdminScreenshotResponse {
         public static final int STATUS_OK = 0;
         public static final int STATUS_CONSENT_DECLINED = 1;
         public static final int STATUS_RATE_LIMITED = 2;
         public static final int STATUS_CAPTURE_FAILED = 3;
         public static final int MAX_IMAGE_BYTES = 1_048_576;
+
+        private final String requestId;
+        private final int status;
+        private final String error;
+        private final int width;
+        private final int height;
+        private final String mimeType;
+        private final byte[] imageBytes;
+
+        public AdminScreenshotResponse(
+                String requestId,
+                int status,
+                String error,
+                int width,
+                int height,
+                String mimeType,
+                byte[] imageBytes
+        ) {
+            this.requestId = requestId;
+            this.status = status;
+            this.error = error;
+            this.width = width;
+            this.height = height;
+            this.mimeType = mimeType;
+            this.imageBytes = imageBytes;
+        }
+
+        public String requestId() { return requestId; }
+        public int status() { return status; }
+        public String error() { return error; }
+        public int width() { return width; }
+        public int height() { return height; }
+        public String mimeType() { return mimeType; }
+        public byte[] imageBytes() { return imageBytes; }
 
         public byte[] encodeBinary() {
             byte[] img = imageBytes == null ? new byte[0] : imageBytes;
@@ -577,8 +864,9 @@ public final class ProtocolMessages {
             writeLpStr(out, mimeType == null ? "image/jpeg" : mimeType);
             ByteBuffer lenBuf = ByteBuffer.allocate(4).order(ByteOrder.BIG_ENDIAN);
             lenBuf.putInt(img.length);
-            out.writeBytes(lenBuf.array());
-            out.writeBytes(img);
+            byte[] lenArr = lenBuf.array();
+            out.write(lenArr, 0, lenArr.length);
+            out.write(img, 0, img.length);
             return out.toByteArray();
         }
 
@@ -622,7 +910,7 @@ public final class ProtocolMessages {
             }
             out.write((bytes.length >>> 8) & 0xFF);
             out.write(bytes.length & 0xFF);
-            out.writeBytes(bytes);
+            out.write(bytes, 0, bytes.length);
         }
 
         private static String readLpStr(ByteBuffer buf) {
@@ -639,26 +927,63 @@ public final class ProtocolMessages {
         }
     }
 
-    // -------------------------------------------------------------------------
-    // Phase 8: haikyo:voice (0x01)
-    // -------------------------------------------------------------------------
+    public static final class VoiceConfigMessage {
+        private final String mode;
+        private final Double maxDistance;
+        private final Double whisperDistance;
+        private final String falloffMode;
+        private final Double falloffFactor;
+        private final Boolean allowGroups;
+        private final boolean recordingAllowed;
+        private final boolean muted;
+        private final boolean forceMuted;
+        private final long muteUntil;
+        private final String muteReason;
+        private final boolean adminVoiceActive;
 
-    public record VoiceConfigMessage(
-            String mode,
-            Double maxDistance,
-            Double whisperDistance,
-            String falloffMode,
-            Double falloffFactor,
-            Boolean allowGroups,
-            boolean recordingAllowed,
-            boolean muted,
-            boolean forceMuted,
-            long muteUntil,
-            String muteReason,
-            boolean adminVoiceActive
-    ) {
+        public VoiceConfigMessage(
+                String mode,
+                Double maxDistance,
+                Double whisperDistance,
+                String falloffMode,
+                Double falloffFactor,
+                Boolean allowGroups,
+                boolean recordingAllowed,
+                boolean muted,
+                boolean forceMuted,
+                long muteUntil,
+                String muteReason,
+                boolean adminVoiceActive
+        ) {
+            this.mode = mode;
+            this.maxDistance = maxDistance;
+            this.whisperDistance = whisperDistance;
+            this.falloffMode = falloffMode;
+            this.falloffFactor = falloffFactor;
+            this.allowGroups = allowGroups;
+            this.recordingAllowed = recordingAllowed;
+            this.muted = muted;
+            this.forceMuted = forceMuted;
+            this.muteUntil = muteUntil;
+            this.muteReason = muteReason;
+            this.adminVoiceActive = adminVoiceActive;
+        }
+
+        public String mode() { return mode; }
+        public Double maxDistance() { return maxDistance; }
+        public Double whisperDistance() { return whisperDistance; }
+        public String falloffMode() { return falloffMode; }
+        public Double falloffFactor() { return falloffFactor; }
+        public Boolean allowGroups() { return allowGroups; }
+        public boolean recordingAllowed() { return recordingAllowed; }
+        public boolean muted() { return muted; }
+        public boolean forceMuted() { return forceMuted; }
+        public long muteUntil() { return muteUntil; }
+        public String muteReason() { return muteReason; }
+        public boolean adminVoiceActive() { return adminVoiceActive; }
+
         public byte[] encodeJson() {
-            Map<String, Object> m = new LinkedHashMap<>();
+            Map<String, Object> m = new LinkedHashMap<String, Object>();
             m.put("mode", mode);
             m.put("max_distance", maxDistance);
             m.put("whisper_distance", whisperDistance);
@@ -676,13 +1001,17 @@ public final class ProtocolMessages {
 
         public static VoiceConfigMessage decodeJson(byte[] body) {
             Map<String, Object> m = JsonCodec.parseObject(new String(body, StandardCharsets.UTF_8));
+            Object md = m.get("max_distance");
+            Object wd = m.get("whisper_distance");
+            Object ff = m.get("falloff_factor");
+            Object ag = m.get("allow_groups");
             return new VoiceConfigMessage(
                     JsonCodec.asString(m, "mode", "off"),
-                    m.get("max_distance") instanceof Number n ? n.doubleValue() : null,
-                    m.get("whisper_distance") instanceof Number n ? n.doubleValue() : null,
+                    md instanceof Number ? Double.valueOf(((Number) md).doubleValue()) : null,
+                    wd instanceof Number ? Double.valueOf(((Number) wd).doubleValue()) : null,
                     JsonCodec.asNullableString(m, "falloff_mode"),
-                    m.get("falloff_factor") instanceof Number n ? n.doubleValue() : null,
-                    m.get("allow_groups") instanceof Boolean b ? b : null,
+                    ff instanceof Number ? Double.valueOf(((Number) ff).doubleValue()) : null,
+                    ag instanceof Boolean ? (Boolean) ag : null,
                     JsonCodec.asBoolean(m, "recording_allowed", false),
                     JsonCodec.asBoolean(m, "muted", false),
                     JsonCodec.asBoolean(m, "force_muted", false),

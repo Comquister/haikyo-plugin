@@ -20,7 +20,9 @@ package dev.haikyo.core.permissions;
 import dev.haikyo.api.PlayerSession;
 import dev.haikyo.api.TrustLevel;
 import dev.haikyo.core.config.HaikyoConfig;
+import dev.haikyo.core.util.Java8Compat;
 
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.Locale;
@@ -45,8 +47,8 @@ public final class HaikyoContextData {
      * Computes the exact LuckPerms context key/value pairs for an online player's session.
      */
     public static Map<String, String> contextsFor(Optional<PlayerSession> sessionOpt) {
-        Map<String, String> ctx = new LinkedHashMap<>();
-        if (sessionOpt == null || sessionOpt.isEmpty()) {
+        Map<String, String> ctx = new LinkedHashMap<String, String>();
+        if (sessionOpt == null || !sessionOpt.isPresent()) {
             ctx.put(KEY_CLIENT, "false");
             ctx.put(KEY_ATTESTED, "false");
             ctx.put(KEY_TRUST, TrustLevel.NONE.wireName());
@@ -58,7 +60,7 @@ public final class HaikyoContextData {
         ctx.put(KEY_CLIENT, isClient ? "true" : "false");
         ctx.put(KEY_ATTESTED, isAttested ? "true" : "false");
         ctx.put(KEY_TRUST, s.trustLevel().wireName());
-        if (isClient && s.clientChannel() != null && !s.clientChannel().isBlank()) {
+        if (isClient && !Java8Compat.isBlank(s.clientChannel())) {
             ctx.put(KEY_CHANNEL, s.clientChannel().trim().toLowerCase(Locale.ROOT));
         }
         return ctx;
@@ -69,21 +71,21 @@ public final class HaikyoContextData {
      * for a player according to {@code permissions.on-haikyo} and {@code permissions.on-attested}.
      */
     public static Set<String> grantedPermissionsFor(Optional<PlayerSession> sessionOpt, HaikyoConfig.PermissionsConfig permCfg) {
-        if (sessionOpt == null || sessionOpt.isEmpty() || permCfg == null) {
-            return Set.of();
+        if (sessionOpt == null || !sessionOpt.isPresent() || permCfg == null) {
+            return Collections.emptySet();
         }
         PlayerSession s = sessionOpt.get();
-        Set<String> granted = new LinkedHashSet<>();
+        Set<String> granted = new LinkedHashSet<String>();
         if (s.haikyoClient()) {
             for (String node : permCfg.onHaikyo()) {
-                if (node != null && !node.isBlank()) {
+                if (!Java8Compat.isBlank(node)) {
                     granted.add(node.trim());
                 }
             }
         }
         if (s.trustLevel() == TrustLevel.ATTESTED) {
             for (String node : permCfg.onAttested()) {
-                if (node != null && !node.isBlank()) {
+                if (!Java8Compat.isBlank(node)) {
                     granted.add(node.trim());
                 }
             }

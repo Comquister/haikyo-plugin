@@ -17,12 +17,11 @@
  */
 package dev.haikyo.core.crypto;
 
+import dev.haikyo.core.util.Java8Compat;
 import dev.haikyo.core.util.JsonCodec;
 
 import java.nio.charset.StandardCharsets;
-import java.security.GeneralSecurityException;
 import java.security.PublicKey;
-import java.security.Signature;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.Collections;
@@ -51,19 +50,64 @@ public final class SignedRulesVerifier {
         NOT_YET_VALID
     }
 
-    public record SignedRulesPackage(
-            int rulesVersion,
-            String keyId,
-            long issuedAt,
-            long expiresAt,
-            List<String> allowedModules,
-            List<String> allowedPacks,
-            Map<String, String> signals,
-            List<String> revokedVersions
-    ) {
+    public static final class SignedRulesPackage {
+        private final int rulesVersion;
+        private final String keyId;
+        private final long issuedAt;
+        private final long expiresAt;
+        private final List<String> allowedModules;
+        private final List<String> allowedPacks;
+        private final Map<String, String> signals;
+        private final List<String> revokedVersions;
+
+        public SignedRulesPackage(
+                int rulesVersion,
+                String keyId,
+                long issuedAt,
+                long expiresAt,
+                List<String> allowedModules,
+                List<String> allowedPacks,
+                Map<String, String> signals,
+                List<String> revokedVersions
+        ) {
+            this.rulesVersion = rulesVersion;
+            this.keyId = keyId;
+            this.issuedAt = issuedAt;
+            this.expiresAt = expiresAt;
+            this.allowedModules = allowedModules;
+            this.allowedPacks = allowedPacks;
+            this.signals = signals;
+            this.revokedVersions = revokedVersions;
+        }
+
+        public int rulesVersion() { return rulesVersion; }
+        public String keyId() { return keyId; }
+        public long issuedAt() { return issuedAt; }
+        public long expiresAt() { return expiresAt; }
+        public List<String> allowedModules() { return allowedModules; }
+        public List<String> allowedPacks() { return allowedPacks; }
+        public Map<String, String> signals() { return signals; }
+        public List<String> revokedVersions() { return revokedVersions; }
     }
 
-    public record VerificationResult(boolean valid, FailureCode failureCode, String detail, SignedRulesPackage rules) {
+    public static final class VerificationResult {
+        private final boolean valid;
+        private final FailureCode failureCode;
+        private final String detail;
+        private final SignedRulesPackage rules;
+
+        public VerificationResult(boolean valid, FailureCode failureCode, String detail, SignedRulesPackage rules) {
+            this.valid = valid;
+            this.failureCode = failureCode;
+            this.detail = detail;
+            this.rules = rules;
+        }
+
+        public boolean valid() { return valid; }
+        public FailureCode failureCode() { return failureCode; }
+        public String detail() { return detail; }
+        public SignedRulesPackage rules() { return rules; }
+
         public static VerificationResult ok(SignedRulesPackage pkg) {
             return new VerificationResult(true, null, null, pkg);
         }
@@ -77,15 +121,15 @@ public final class SignedRulesVerifier {
     private final long clockSkewSeconds;
 
     public SignedRulesVerifier(Map<String, PublicKey> publicKeys, long clockSkewSeconds) {
-        this.publicKeys = Collections.unmodifiableMap(new HashMap<>(publicKeys));
+        this.publicKeys = Collections.unmodifiableMap(new HashMap<String, PublicKey>(publicKeys));
         this.clockSkewSeconds = Math.max(0L, clockSkewSeconds);
     }
 
     public static SignedRulesVerifier fromBase64Keys(Map<String, String> keyIdToBase64) {
-        Map<String, PublicKey> keys = new HashMap<>();
+        Map<String, PublicKey> keys = new HashMap<String, PublicKey>();
         if (keyIdToBase64 != null) {
             for (Map.Entry<String, String> e : keyIdToBase64.entrySet()) {
-                if (e.getKey() != null && e.getValue() != null && !e.getValue().isBlank()) {
+                if (e.getKey() != null && !Java8Compat.isBlank(e.getValue())) {
                     keys.put(e.getKey(), AttestationVerifier.parsePublicKeyBase64(e.getValue()));
                 }
             }
@@ -128,7 +172,7 @@ public final class SignedRulesVerifier {
         byte[] signingInput = new byte[SIGNING_PREFIX.length + rawPayload.length];
         System.arraycopy(SIGNING_PREFIX, 0, signingInput, 0, SIGNING_PREFIX.length);
         System.arraycopy(rawPayload, 0, signingInput, SIGNING_PREFIX.length, rawPayload.length);
-        if (!verifyEd25519(pubKey, signingInput, sigBytes)) {
+        if (!PureEd25519.verify(pubKey, signingInput, sigBytes)) {
             return VerificationResult.fail(FailureCode.INVALID_SIGNATURE, "Ed25519 verification failed");
         }
 
@@ -152,7 +196,7 @@ public final class SignedRulesVerifier {
             return VerificationResult.fail(FailureCode.NOT_YET_VALID, "Rules package issued in future: " + issuedAt);
         }
 
-        Map<String, String> signals = new LinkedHashMap<>();
+        Map<String, String> signals = new LinkedHashMap<String, String>();
         for (Map.Entry<String, Object> e : JsonCodec.asObject(parsed, "signals").entrySet()) {
             if (e.getValue() != null) {
                 signals.put(e.getKey(), e.getValue().toString());
@@ -169,16 +213,5 @@ public final class SignedRulesVerifier {
                 Collections.unmodifiableMap(signals),
                 JsonCodec.asStringList(parsed, "revoked_versions")
         ));
-    }
-
-    private static boolean verifyEd25519(PublicKey key, byte[] payload, byte[] sigBytes) {
-        try {
-            Signature sig = Signature.getInstance("Ed25519");
-            sig.initVerify(key);
-            sig.update(payload);
-            return sig.verify(sigBytes);
-        } catch (GeneralSecurityException e) {
-            return false;
-        }
     }
 }

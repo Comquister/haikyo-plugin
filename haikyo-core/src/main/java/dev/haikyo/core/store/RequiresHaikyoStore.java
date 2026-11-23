@@ -17,6 +17,7 @@
  */
 package dev.haikyo.core.store;
 
+import dev.haikyo.core.util.Java8Compat;
 import dev.haikyo.core.util.JsonCodec;
 
 import java.io.IOException;
@@ -39,17 +40,30 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public final class RequiresHaikyoStore {
 
-    public record Entry(
-            UUID playerId,
-            String playerName,
-            String reason,
-            Instant addedAt,
-            String addedBy
-    ) {
+    public static final class Entry {
+        private final UUID playerId;
+        private final String playerName;
+        private final String reason;
+        private final Instant addedAt;
+        private final String addedBy;
+
+        public Entry(UUID playerId, String playerName, String reason, Instant addedAt, String addedBy) {
+            this.playerId = playerId;
+            this.playerName = playerName;
+            this.reason = reason;
+            this.addedAt = addedAt;
+            this.addedBy = addedBy;
+        }
+
+        public UUID playerId() { return playerId; }
+        public String playerName() { return playerName; }
+        public String reason() { return reason; }
+        public Instant addedAt() { return addedAt; }
+        public String addedBy() { return addedBy; }
     }
 
     private final Path filePath;
-    private final Map<UUID, Entry> entries = new ConcurrentHashMap<>();
+    private final Map<UUID, Entry> entries = new ConcurrentHashMap<UUID, Entry>();
 
     public RequiresHaikyoStore(Path filePath) {
         this.filePath = filePath;
@@ -60,20 +74,20 @@ public final class RequiresHaikyoStore {
         if (filePath == null || !Files.exists(filePath)) {
             return;
         }
-        String raw = Files.readString(filePath, StandardCharsets.UTF_8);
-        if (raw.isBlank()) {
+        String raw = Java8Compat.readString(filePath, StandardCharsets.UTF_8);
+        if (Java8Compat.isBlank(raw)) {
             return;
         }
         Map<String, Object> root = JsonCodec.parseObject(raw);
         Map<String, Object> players = JsonCodec.asObject(root, "players");
         for (Map.Entry<String, Object> e : players.entrySet()) {
-            if (!(e.getValue() instanceof Map<?, ?> rawEntry)) {
+            if (!(e.getValue() instanceof Map<?, ?>)) {
                 continue;
             }
             try {
                 UUID uuid = UUID.fromString(e.getKey());
                 @SuppressWarnings("unchecked")
-                Map<String, Object> m = (Map<String, Object>) rawEntry;
+                Map<String, Object> m = (Map<String, Object>) e.getValue();
                 String name = JsonCodec.asString(m, "name", "");
                 String reason = JsonCodec.asString(m, "reason", "");
                 long addedAtEpoch = JsonCodec.asLong(m, "added_at", 0L);
@@ -92,22 +106,22 @@ public final class RequiresHaikyoStore {
         if (parent != null) {
             Files.createDirectories(parent);
         }
-        Map<String, Object> players = new LinkedHashMap<>();
+        Map<String, Object> players = new LinkedHashMap<String, Object>();
         for (Entry e : entries.values()) {
-            Map<String, Object> obj = new LinkedHashMap<>();
+            Map<String, Object> obj = new LinkedHashMap<String, Object>();
             obj.put("name", e.playerName());
             obj.put("reason", e.reason());
             obj.put("added_at", e.addedAt().getEpochSecond());
             obj.put("added_by", e.addedBy());
             players.put(e.playerId().toString(), obj);
         }
-        Map<String, Object> root = new LinkedHashMap<>();
+        Map<String, Object> root = new LinkedHashMap<String, Object>();
         root.put("schema_version", 1);
         root.put("players", players);
         String json = JsonCodec.stringifyPretty(root);
 
         Path tmp = filePath.resolveSibling(filePath.getFileName().toString() + ".tmp");
-        Files.writeString(tmp, json, StandardCharsets.UTF_8);
+        Java8Compat.writeString(tmp, json, StandardCharsets.UTF_8);
         Files.move(tmp, filePath, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
     }
 
@@ -142,7 +156,7 @@ public final class RequiresHaikyoStore {
     }
 
     public Optional<Entry> pardonByNameOrUuid(String target) {
-        if (target == null || target.isBlank()) {
+        if (Java8Compat.isBlank(target)) {
             return Optional.empty();
         }
         String trimmed = target.trim();

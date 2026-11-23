@@ -27,18 +27,40 @@ import java.util.Locale;
 
 /**
  * Per-player verified ring buffer of {@code haikyo:ac} gameplay input ticks.
- * Enforces monotonic sequence numbers, rate limits, and provides flag-explanation heuristics
- * (checking whether recent verified gameplay inputs corroborate a movement, rotation, or combat flag).
  */
 public final class AcInputVerifier {
     private static final int MAX_BUFFERED_SAMPLES = 200; // ~10 seconds at 20 TPS
     private static final int MAX_PACKETS_PER_SECOND = 25;
     private static final Duration EXPLANATION_WINDOW = Duration.ofMillis(1500);
 
-    public record RecordedSample(long tick, Instant receivedAt, ProtocolMessages.AcInputSample sample) {
+    public static final class RecordedSample {
+        private final long tick;
+        private final Instant receivedAt;
+        private final ProtocolMessages.AcInputSample sample;
+
+        public RecordedSample(long tick, Instant receivedAt, ProtocolMessages.AcInputSample sample) {
+            this.tick = tick;
+            this.receivedAt = receivedAt;
+            this.sample = sample;
+        }
+
+        public long tick() { return tick; }
+        public Instant receivedAt() { return receivedAt; }
+        public ProtocolMessages.AcInputSample sample() { return sample; }
     }
 
-    public record AcceptResult(boolean accepted, String rejectReason) {
+    public static final class AcceptResult {
+        private final boolean accepted;
+        private final String rejectReason;
+
+        public AcceptResult(boolean accepted, String rejectReason) {
+            this.accepted = accepted;
+            this.rejectReason = rejectReason;
+        }
+
+        public boolean accepted() { return accepted; }
+        public String rejectReason() { return rejectReason; }
+
         public static AcceptResult ok() {
             return new AcceptResult(true, null);
         }
@@ -48,8 +70,8 @@ public final class AcInputVerifier {
         }
     }
 
-    private final Deque<RecordedSample> buffer = new ArrayDeque<>(MAX_BUFFERED_SAMPLES);
-    private final Deque<Instant> packetTimestamps = new ArrayDeque<>(MAX_PACKETS_PER_SECOND + 2);
+    private final Deque<RecordedSample> buffer = new ArrayDeque<RecordedSample>(MAX_BUFFERED_SAMPLES);
+    private final Deque<Instant> packetTimestamps = new ArrayDeque<Instant>(MAX_PACKETS_PER_SECOND + 2);
     private long lastSeq = -1;
     private Instant lastAcceptedAt;
 
@@ -57,7 +79,6 @@ public final class AcInputVerifier {
         if (lastSeq >= 0 && packet.seq() <= lastSeq) {
             return AcceptResult.reject("non-monotonic ac_inputs seq: " + packet.seq() + " <= " + lastSeq);
         }
-        // Rate limit sliding 1-second window
         Instant cutoff = now.minusSeconds(1);
         while (!packetTimestamps.isEmpty() && packetTimestamps.peekFirst().isBefore(cutoff)) {
             packetTimestamps.removeFirst();
@@ -81,11 +102,6 @@ public final class AcInputVerifier {
         return AcceptResult.ok();
     }
 
-    /**
-     * Checks whether recent verified gameplay inputs plausibly explain a flagged check
-     * (e.g., aim/rotation flags explained by finite smooth look deltas, movement/simulation
-     * flags explained by matching directional/jump/sprint inputs, combat flags explained by attack inputs).
-     */
     public synchronized boolean explainsFlag(String checkName, Instant now) {
         if (lastAcceptedAt == null || Duration.between(lastAcceptedAt, now).compareTo(EXPLANATION_WINDOW) > 0) {
             return false;

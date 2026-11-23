@@ -19,6 +19,7 @@ package dev.haikyo.paper.permissions;
 
 import dev.haikyo.core.permissions.HaikyoContextData;
 import dev.haikyo.core.trust.TrustManager;
+import dev.haikyo.paper.compat.PlatformScheduler;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.permissions.PermissionAttachment;
@@ -58,7 +59,7 @@ public final class HaikyoPermissionManager {
                 trustManager.getPlayerSession(playerId),
                 trustManager.config().permissions()
         );
-        player.getScheduler().run(plugin, task -> applyOnEntityThread(player, desired), null);
+        PlatformScheduler.runForPlayer(plugin, player, () -> applyOnEntityThread(player, desired));
     }
 
     public void syncAllOnline() {

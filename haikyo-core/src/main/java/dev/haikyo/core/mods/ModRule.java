@@ -26,7 +26,7 @@ import java.util.Objects;
 /**
  * Per-mod server policy rule ({@code allow}, {@code limit} with arbitrary mod-declared params, or {@code block}).
  */
-public record ModRule(Action action, Map<String, Object> params, String reason) {
+public final class ModRule {
     public enum Action {
         ALLOW,
         LIMIT,
@@ -40,28 +40,62 @@ public record ModRule(Action action, Map<String, Object> params, String reason) 
             if (raw == null) {
                 return ALLOW;
             }
-            return switch (raw.trim().toLowerCase(Locale.ROOT)) {
-                case "block" -> BLOCK;
-                case "limit" -> LIMIT;
-                default -> ALLOW;
-            };
+            String lower = raw.trim().toLowerCase(Locale.ROOT);
+            if ("block".equals(lower)) {
+                return BLOCK;
+            }
+            if ("limit".equals(lower)) {
+                return LIMIT;
+            }
+            return ALLOW;
         }
     }
 
-    public ModRule {
-        Objects.requireNonNull(action, "action");
-        params = params == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(params));
+    private final Action action;
+    private final Map<String, Object> params;
+    private final String reason;
+
+    public ModRule(Action action, Map<String, Object> params, String reason) {
+        this.action = Objects.requireNonNull(action, "action");
+        this.params = params == null
+                ? Collections.<String, Object>emptyMap()
+                : Collections.unmodifiableMap(new LinkedHashMap<String, Object>(params));
+        this.reason = reason;
     }
 
+    public Action action() { return action; }
+    public Map<String, Object> params() { return params; }
+    public String reason() { return reason; }
+
     public static ModRule allow() {
-        return new ModRule(Action.ALLOW, Map.of(), null);
+        return new ModRule(Action.ALLOW, Collections.<String, Object>emptyMap(), null);
     }
 
     public static ModRule block(String reason) {
-        return new ModRule(Action.BLOCK, Map.of(), reason);
+        return new ModRule(Action.BLOCK, Collections.<String, Object>emptyMap(), reason);
     }
 
     public static ModRule limit(Map<String, Object> params, String reason) {
         return new ModRule(Action.LIMIT, params, reason);
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof ModRule)) return false;
+        ModRule that = (ModRule) o;
+        return action == that.action
+                && Objects.equals(params, that.params)
+                && Objects.equals(reason, that.reason);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(action, params, reason);
+    }
+
+    @Override
+    public String toString() {
+        return "ModRule[action=" + action + ", params=" + params + ", reason=" + reason + "]";
     }
 }

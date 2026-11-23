@@ -23,38 +23,85 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 
 /**
  * Big-Endian binary wire frame encoder and decoder for all {@code haikyo:*} channels.
- *
- * <p>Unfragmented (6 B header): {@code "HK" | proto_ver:u16 | flags:u8(0x00) | pkt_type:u8 | body}</p>
- * <p>Fragmented (46 B header): {@code "HK" | proto_ver:u16 | flags:u8(0x01) | pkt_type:u8 | frag_id:u32 | frag_idx:u16 | frag_total:u16 | sha256:[32] | chunk}</p>
  */
 public final class WireFrame {
 
-    public record DecodedFrame(
-            int protocolVersion,
-            boolean fragmented,
-            int packetType,
-            int fragId,
-            int fragIndex,
-            int fragTotal,
-            byte[] payloadSha256,
-            byte[] payload
-    ) {
+    public static final class DecodedFrame {
+        private final int protocolVersion;
+        private final boolean fragmented;
+        private final int packetType;
+        private final int fragId;
+        private final int fragIndex;
+        private final int fragTotal;
+        private final byte[] payloadSha256;
+        private final byte[] payload;
+
+        public DecodedFrame(
+                int protocolVersion,
+                boolean fragmented,
+                int packetType,
+                int fragId,
+                int fragIndex,
+                int fragTotal,
+                byte[] payloadSha256,
+                byte[] payload
+        ) {
+            this.protocolVersion = protocolVersion;
+            this.fragmented = fragmented;
+            this.packetType = packetType;
+            this.fragId = fragId;
+            this.fragIndex = fragIndex;
+            this.fragTotal = fragTotal;
+            this.payloadSha256 = payloadSha256;
+            this.payload = payload;
+        }
+
+        public int protocolVersion() { return protocolVersion; }
+        public boolean fragmented() { return fragmented; }
+        public int packetType() { return packetType; }
+        public int fragId() { return fragId; }
+        public int fragIndex() { return fragIndex; }
+        public int fragTotal() { return fragTotal; }
+        public byte[] payloadSha256() { return payloadSha256; }
+        public byte[] payload() { return payload; }
     }
 
-    public sealed interface DecodeResult permits DecodeOk, DecodeHigherVersion, DecodeInvalid {
+    public interface DecodeResult {
     }
 
-    public record DecodeOk(DecodedFrame frame) implements DecodeResult {
+    public static final class DecodeOk implements DecodeResult {
+        private final DecodedFrame frame;
+
+        public DecodeOk(DecodedFrame frame) {
+            this.frame = frame;
+        }
+
+        public DecodedFrame frame() { return frame; }
     }
 
-    public record DecodeHigherVersion(int protocolVersion) implements DecodeResult {
+    public static final class DecodeHigherVersion implements DecodeResult {
+        private final int protocolVersion;
+
+        public DecodeHigherVersion(int protocolVersion) {
+            this.protocolVersion = protocolVersion;
+        }
+
+        public int protocolVersion() { return protocolVersion; }
     }
 
-    public record DecodeInvalid(String reason) implements DecodeResult {
+    public static final class DecodeInvalid implements DecodeResult {
+        private final String reason;
+
+        public DecodeInvalid(String reason) {
+            this.reason = reason;
+        }
+
+        public String reason() { return reason; }
     }
 
     private WireFrame() {
@@ -83,7 +130,7 @@ public final class WireFrame {
             throw new IllegalArgumentException("Payload exceeds max reassembled bytes: " + data.length);
         }
         if (HaikyoChannels.UNFRAGMENTED_HEADER_BYTES + data.length <= maxWireBytes) {
-            return List.of(encodeUnfragmented(packetType, data));
+            return Collections.singletonList(encodeUnfragmented(packetType, data));
         }
         int maxChunk = maxWireBytes - HaikyoChannels.FRAGMENTED_HEADER_BYTES;
         if (maxChunk <= 0) {
@@ -94,7 +141,7 @@ public final class WireFrame {
             throw new IllegalArgumentException("Fragment count out of bounds: " + total);
         }
         byte[] sha256 = sha256(data);
-        List<byte[]> frames = new ArrayList<>(total);
+        List<byte[]> frames = new ArrayList<byte[]>(total);
         for (int idx = 0; idx < total; idx++) {
             int offset = idx * maxChunk;
             int chunkLen = Math.min(maxChunk, data.length - offset);

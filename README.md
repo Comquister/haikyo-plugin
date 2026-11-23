@@ -5,7 +5,7 @@
 Official server-side plugin and mod suite for integrating Minecraft servers (**Paper**, **Folia**, **Velocity**, and **Fabric**) with the **Haikyo Client**.
 
 - **Protocol negotiation (`haikyo:*`)**: vanilla and non-Haikyo players continue playing normally unless `require-haikyo` is enabled.
-- **Ed25519 client attestation**: verifies short-lived attestation tokens and signed rules packages (`HKRL`) using built-in JDK Ed25519 (zero external crypto dependencies) with key rotation and version revocation.
+- **Ed25519 client attestation**: verifies short-lived attestation tokens and signed rules packages (`HKRL`) using built-in JDK Ed25519 on Java 15+ and a zero-dependency RFC 8032 pure-Java fallback on Java 8–14, with key rotation and version revocation.
 - **Server-side mod control (`mods.rules`)**: `allow`, `limit` (with arbitrary mod-declared parameters such as `zoom.max_factor`), or `block` any Haikyo mod, audited via signed integrity reports.
 - **Integrated anticheat trust engine**: assigns per-player trust levels (`NONE`, `ATTESTED`, `SUSPECT`) with configurable `always` vs `relaxed` check tables, randomized unrelaxed sampling (default 5%), `haikyo:ac` gameplay input corroboration, and adapters for **GrimAC**, **Vulcan**, and **Generic** anticheats.
 - **Native Paper, Folia & Fabric support**:
@@ -40,7 +40,7 @@ Plugin e mod oficial do servidor para integração com o **Haikyo Client** em **
 |---|---|---|
 | `haikyo-api` | All (Java) | Public Java API for third-party plugins & server mods (`HaikyoApi`, `TrustLevel`, `PlayerSession`, listeners). |
 | `haikyo-core` | All (Java) | Pure-Java core (wire framing & fragmentation, Ed25519 attestation & `HKRL` rules verifier, `haikyo:link` HMAC codec, `mods.rules`, `TrustManager`, `AuditLogger`, `ScreenshotDeliveryService`, `VoiceModerationManager`, localization, `requires-haikyo.json`). Zero platform imports. |
-| `haikyo-paper` | Paper & Folia 26.3+ | Self-contained Paper/Folia plugin JAR (`folia-supported: true`), strict Folia region/entity scheduler compatibility, full `/haikyo` commands, GrimAC / Vulcan / Generic anticheat adapters, Simple Voice Chat Mode A adapter, and `waypoints` sync. |
+| `haikyo-paper` | Spigot, Paper, Purpur & Folia 1.8 – 26.3 | Self-contained Java 8+ multi-version plugin JAR (`api-version: '1.13'`, `folia-supported: true`), automatic Folia/Paper regionized scheduler detection with legacy Bukkit fallback, Adventure & legacy text/kick/locale compatibility, full `/haikyo` commands, GrimAC / Vulcan / Generic anticheat adapters, Simple Voice Chat Mode A adapter, and `waypoints` sync. |
 | `haikyo-velocity` | Velocity 4.3.1+ | Self-contained Velocity proxy plugin JAR implementing the `proxy` role and `haikyo:link` session forwarding. |
 | `haikyo-fabric` | Fabric 26.3 | Self-contained Fabric server mod JAR reusing `haikyo-core`, Brigadier `/haikyo` commands, `waypoints`, `haikyo:admin`, and Simple Voice Chat Mode A entrypoint. |
 | `haikyo-pumpkin` | PumpkinMC (Rust Native) | High-performance native Rust cdylib plugin for PumpkinMC servers (Minecraft 26.3). Wire framing, Ed25519 offline verification, `/haikyo` commands, and `haikyo:link` (`HKRQ`) suspect synchronization with Velocity. |
@@ -52,7 +52,7 @@ Comparison of features across server implementations:
 
 | Feature / Subsystem | Paper & Folia (`haikyo-paper`) | Fabric (`haikyo-fabric`) | Velocity (`haikyo-velocity`) | PumpkinMC (`haikyo-pumpkin`) |
 |---|:---:|:---:|:---:|:---:|
-| **Language & Runtime** | Java 25 | Java 25 | Java 25 | Rust (Native cdylib / Wasm) |
+| **Language & Runtime** | Java 8 – 25 (MC 1.8 – 26.3) | Java 25 | Java 25 | Rust (Native cdylib / Wasm) |
 | **Folia Compatibility** | ✅ Full (`folia-supported: true`) | N/A | N/A | N/A (Rust multithreaded) |
 | **Wire Framing & Defrag** | ✅ Yes (64 frags, SHA-256) | ✅ Yes | ✅ Yes | ✅ Yes |
 | **Ed25519 Client Attestation** | ✅ Yes (`HKAT` v1) | ✅ Yes | ✅ Yes (at edge) | ✅ Yes |
@@ -69,8 +69,9 @@ Comparison of features across server implementations:
 
 ## Requirements
 
-- **Java 25** (required by Paper 26.3 / Folia 26.3 / Velocity 4.3.1 / Fabric 26.3)
-- **Paper 26.3+**, **Folia 26.3+**, **Velocity 4.3.1+**, or **Fabric 26.3** (with Fabric API)
+- **Paper / Spigot / Purpur / CraftBukkit / Folia (`haikyo-paper`)**: Minecraft **1.8 – 26.3**, **Java 8+**
+- **Velocity (`haikyo-velocity`)**: **Velocity 4.3.1+**, **Java 21/25**
+- **Fabric (`haikyo-fabric`)**: **Fabric 26.3** (with Fabric API), **Java 25**
 
 ## Quick Start
 

@@ -19,6 +19,7 @@ package dev.haikyo.core.crypto;
 
 import dev.haikyo.api.TrustLevel;
 import dev.haikyo.core.util.Hex;
+import dev.haikyo.core.util.Java8Compat;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
@@ -36,17 +37,6 @@ import java.util.UUID;
 
 /**
  * Binary HMAC-SHA256 codec for {@code haikyo:link} (Velocity proxy <-> backend session transfer).
- *
- * <pre>
- * pkt_type 0x01:
- *   payload = "HKLK" | ver:u8(1) | player_uuid:[16] | attested:u8 | trust_level:u8
- *           | client_version:lp_str | channel:lp_str | proxy_id:lp_str | consented_scopes:lp_str
- *           | signal_count:u16 | issued_at:i64 | expires_at:i64 | session_key:[32]
- *   body    = payload || HMAC-SHA256(shared_secret_utf8, payload)
- *
- * pkt_type 0x02 (link_request):
- *   body    = player_uuid:[16]
- * </pre>
  */
 public final class HaikyoLinkCodec {
     public static final byte[] MAGIC = {'H', 'K', 'L', 'K'};
@@ -59,21 +49,46 @@ public final class HaikyoLinkCodec {
     public static final int ACTION_PARDON = 0;
     public static final int ACTION_REQUIRE = 1;
 
-    public record RequireSync(
-            boolean require,
-            UUID playerUuid,
-            String playerName,
-            String reason,
-            long issuedAt
-    ) {
+    public static final class RequireSync {
+        private final boolean require;
+        private final UUID playerUuid;
+        private final String playerName;
+        private final String reason;
+        private final long issuedAt;
+
+        public RequireSync(boolean require, UUID playerUuid, String playerName, String reason, long issuedAt) {
+            this.require = require;
+            this.playerUuid = playerUuid;
+            this.playerName = playerName;
+            this.reason = reason;
+            this.issuedAt = issuedAt;
+        }
+
+        public boolean require() { return require; }
+        public UUID playerUuid() { return playerUuid; }
+        public String playerName() { return playerName; }
+        public String reason() { return reason; }
+        public long issuedAt() { return issuedAt; }
     }
 
-    public record RequireSyncDecodeResult(
-            boolean valid,
-            FailureCode failureCode,
-            String detail,
-            RequireSync sync
-    ) {
+    public static final class RequireSyncDecodeResult {
+        private final boolean valid;
+        private final FailureCode failureCode;
+        private final String detail;
+        private final RequireSync sync;
+
+        public RequireSyncDecodeResult(boolean valid, FailureCode failureCode, String detail, RequireSync sync) {
+            this.valid = valid;
+            this.failureCode = failureCode;
+            this.detail = detail;
+            this.sync = sync;
+        }
+
+        public boolean valid() { return valid; }
+        public FailureCode failureCode() { return failureCode; }
+        public String detail() { return detail; }
+        public RequireSync sync() { return sync; }
+
         public static RequireSyncDecodeResult ok(RequireSync sync) {
             return new RequireSyncDecodeResult(true, null, null, sync);
         }
@@ -83,19 +98,56 @@ public final class HaikyoLinkCodec {
         }
     }
 
-    public record LinkSession(
-            UUID playerUuid,
-            boolean attested,
-            TrustLevel trustLevel,
-            String clientVersion,
-            String channel,
-            String proxyId,
-            Set<String> consentedScopes,
-            int signalCount,
-            long issuedAt,
-            long expiresAt,
-            byte[] sessionKey
-    ) {
+    public static final class LinkSession {
+        private final UUID playerUuid;
+        private final boolean attested;
+        private final TrustLevel trustLevel;
+        private final String clientVersion;
+        private final String channel;
+        private final String proxyId;
+        private final Set<String> consentedScopes;
+        private final int signalCount;
+        private final long issuedAt;
+        private final long expiresAt;
+        private final byte[] sessionKey;
+
+        public LinkSession(
+                UUID playerUuid,
+                boolean attested,
+                TrustLevel trustLevel,
+                String clientVersion,
+                String channel,
+                String proxyId,
+                Set<String> consentedScopes,
+                int signalCount,
+                long issuedAt,
+                long expiresAt,
+                byte[] sessionKey
+        ) {
+            this.playerUuid = playerUuid;
+            this.attested = attested;
+            this.trustLevel = trustLevel;
+            this.clientVersion = clientVersion;
+            this.channel = channel;
+            this.proxyId = proxyId;
+            this.consentedScopes = consentedScopes;
+            this.signalCount = signalCount;
+            this.issuedAt = issuedAt;
+            this.expiresAt = expiresAt;
+            this.sessionKey = sessionKey;
+        }
+
+        public UUID playerUuid() { return playerUuid; }
+        public boolean attested() { return attested; }
+        public TrustLevel trustLevel() { return trustLevel; }
+        public String clientVersion() { return clientVersion; }
+        public String channel() { return channel; }
+        public String proxyId() { return proxyId; }
+        public Set<String> consentedScopes() { return consentedScopes; }
+        public int signalCount() { return signalCount; }
+        public long issuedAt() { return issuedAt; }
+        public long expiresAt() { return expiresAt; }
+        public byte[] sessionKey() { return sessionKey; }
     }
 
     public enum FailureCode {
@@ -106,7 +158,24 @@ public final class HaikyoLinkCodec {
         UUID_MISMATCH
     }
 
-    public record DecodeResult(boolean valid, FailureCode failureCode, String detail, LinkSession session) {
+    public static final class DecodeResult {
+        private final boolean valid;
+        private final FailureCode failureCode;
+        private final String detail;
+        private final LinkSession session;
+
+        public DecodeResult(boolean valid, FailureCode failureCode, String detail, LinkSession session) {
+            this.valid = valid;
+            this.failureCode = failureCode;
+            this.detail = detail;
+            this.session = session;
+        }
+
+        public boolean valid() { return valid; }
+        public FailureCode failureCode() { return failureCode; }
+        public String detail() { return detail; }
+        public LinkSession session() { return session; }
+
         public static DecodeResult ok(LinkSession session) {
             return new DecodeResult(true, null, null, session);
         }
@@ -127,13 +196,14 @@ public final class HaikyoLinkCodec {
             throw new IllegalArgumentException("sessionKey must be 32 bytes");
         }
         ByteArrayOutputStream out = new ByteArrayOutputStream(256);
-        out.writeBytes(MAGIC);
+        out.write(MAGIC, 0, MAGIC.length);
         out.write(FORMAT_VERSION);
 
         ByteBuffer uuidBuf = ByteBuffer.allocate(16).order(ByteOrder.BIG_ENDIAN);
         uuidBuf.putLong(session.playerUuid().getMostSignificantBits());
         uuidBuf.putLong(session.playerUuid().getLeastSignificantBits());
-        out.writeBytes(uuidBuf.array());
+        byte[] uuidArr = uuidBuf.array();
+        out.write(uuidArr, 0, uuidArr.length);
 
         out.write(session.attested() ? 1 : 0);
         out.write(session.trustLevel().wireId());
@@ -141,7 +211,7 @@ public final class HaikyoLinkCodec {
         AttestationToken.writeLpStr(out, session.channel());
         AttestationToken.writeLpStr(out, session.proxyId());
 
-        TreeSet<String> sortedScopes = new TreeSet<>();
+        TreeSet<String> sortedScopes = new TreeSet<String>();
         if (session.consentedScopes() != null) {
             sortedScopes.addAll(session.consentedScopes());
         }
@@ -154,8 +224,10 @@ public final class HaikyoLinkCodec {
         ByteBuffer times = ByteBuffer.allocate(16).order(ByteOrder.BIG_ENDIAN);
         times.putLong(session.issuedAt());
         times.putLong(session.expiresAt());
-        out.writeBytes(times.array());
-        out.writeBytes(session.sessionKey());
+        byte[] timesArr = times.array();
+        out.write(timesArr, 0, timesArr.length);
+        byte[] sk = session.sessionKey();
+        out.write(sk, 0, sk.length);
 
         byte[] payload = out.toByteArray();
         byte[] hmac = hmacSha256(sharedSecret.getBytes(StandardCharsets.UTF_8), payload);
@@ -220,7 +292,7 @@ public final class HaikyoLinkCodec {
                 return DecodeResult.fail(FailureCode.SESSION_EXPIRED, "haikyo:link session expired at " + expiresAt);
             }
 
-            Set<String> scopes = new LinkedHashSet<>();
+            Set<String> scopes = new LinkedHashSet<String>();
             if (!scopesCsv.isEmpty()) {
                 for (String s : scopesCsv.split(",")) {
                     String trimmed = s.trim();
@@ -231,7 +303,7 @@ public final class HaikyoLinkCodec {
             }
             return DecodeResult.ok(new LinkSession(
                     playerUuid, attested, trustLevel, clientVersion, channel, proxyId,
-                    Set.copyOf(scopes), signalCount, issuedAt, expiresAt, sessionKey
+                    Java8Compat.copyOfSet(scopes), signalCount, issuedAt, expiresAt, sessionKey
             ));
         } catch (IllegalArgumentException e) {
             return DecodeResult.fail(FailureCode.MALFORMED_PAYLOAD, e.getMessage());
@@ -253,30 +325,28 @@ public final class HaikyoLinkCodec {
         return new UUID(buf.getLong(), buf.getLong());
     }
 
-    /**
-     * Encodes a signed {@code haikyo:link} {@code 0x03} ({@code HKRQ}) backend -> proxy require/pardon sync:
-     * {@code "HKRQ" | ver:u8(1) | action:u8(1=REQUIRE,0=PARDON) | player_uuid:[16] | player_name:lp_str | reason:lp_str | issued_at:i64 || HMAC-SHA256(32B)}.
-     */
     public static byte[] encodeSignedRequireSync(RequireSync sync, String sharedSecret) {
         if (sharedSecret == null || sharedSecret.isEmpty()) {
             throw new IllegalArgumentException("haikyo:link shared secret must not be empty");
         }
         ByteArrayOutputStream out = new ByteArrayOutputStream(128);
-        out.writeBytes(REQUIRE_SYNC_MAGIC);
+        out.write(REQUIRE_SYNC_MAGIC, 0, REQUIRE_SYNC_MAGIC.length);
         out.write(FORMAT_VERSION);
         out.write(sync.require() ? ACTION_REQUIRE : ACTION_PARDON);
 
         ByteBuffer uuidBuf = ByteBuffer.allocate(16).order(ByteOrder.BIG_ENDIAN);
         uuidBuf.putLong(sync.playerUuid().getMostSignificantBits());
         uuidBuf.putLong(sync.playerUuid().getLeastSignificantBits());
-        out.writeBytes(uuidBuf.array());
+        byte[] uuidArr = uuidBuf.array();
+        out.write(uuidArr, 0, uuidArr.length);
 
         AttestationToken.writeLpStr(out, sync.playerName() == null ? "" : sync.playerName());
         AttestationToken.writeLpStr(out, sync.reason() == null ? "" : sync.reason());
 
         ByteBuffer ts = ByteBuffer.allocate(8).order(ByteOrder.BIG_ENDIAN);
         ts.putLong(sync.issuedAt());
-        out.writeBytes(ts.array());
+        byte[] tsArr = ts.array();
+        out.write(tsArr, 0, tsArr.length);
 
         byte[] payload = out.toByteArray();
         byte[] hmac = hmacSha256(sharedSecret.getBytes(StandardCharsets.UTF_8), payload);
@@ -286,10 +356,6 @@ public final class HaikyoLinkCodec {
         return body;
     }
 
-    /**
-     * Verifies and decodes a {@code haikyo:link} {@code 0x03} ({@code HKRQ}) payload, enforcing
-     * constant-time HMAC-SHA256 and timestamp freshness ({@code |now - issued_at| <= 60s}).
-     */
     public static RequireSyncDecodeResult verifyAndDecodeRequireSync(
             byte[] body,
             String sharedSecret,
@@ -298,7 +364,6 @@ public final class HaikyoLinkCodec {
         if (sharedSecret == null || sharedSecret.isEmpty()) {
             return RequireSyncDecodeResult.fail(FailureCode.MISSING_SECRET, "haikyo:link shared secret is not configured");
         }
-        // Minimum: 4(magic) + 1(ver) + 1(action) + 16(uuid) + 2(nameLen) + 2(reasonLen) + 8(issuedAt) + 32(hmac)
         if (body == null || body.length < 4 + 1 + 1 + 16 + 2 + 2 + 8 + HMAC_LENGTH) {
             return RequireSyncDecodeResult.fail(FailureCode.MALFORMED_PAYLOAD, "HKRQ payload too short");
         }

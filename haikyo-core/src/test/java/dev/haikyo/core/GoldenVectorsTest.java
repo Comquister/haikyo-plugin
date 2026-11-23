@@ -21,6 +21,7 @@ import dev.haikyo.api.TrustLevel;
 import dev.haikyo.core.crypto.AttestationToken;
 import dev.haikyo.core.crypto.AttestationVerifier;
 import dev.haikyo.core.crypto.HaikyoLinkCodec;
+import dev.haikyo.core.crypto.PureEd25519;
 import dev.haikyo.core.crypto.ServerAddressNormalizer;
 import dev.haikyo.core.crypto.SignedRulesVerifier;
 import dev.haikyo.core.protocol.FragmentReassembler;
@@ -104,6 +105,16 @@ class GoldenVectorsTest {
                 validRes.token().expiresAt()
         );
         assertEquals(JsonCodec.asString(validVec, "payload_hex", ""), Hex.encode(reencoded));
+
+        // Pure-Java RFC 8032 Ed25519 fallback (used on Java 8-14) must match golden vectors
+        byte[] primaryPubRaw = Base64.getDecoder().decode(JsonCodec.asString(primary, "public_raw_b64", ""));
+        assertTrue(PureEd25519.verifyPureJava(primaryPubRaw, validRes.token().signedPayloadBytes(), validRes.token().signature()));
+        byte[] badSig = validRes.token().signature().clone();
+        badSig[0] ^= 0x01;
+        assertFalse(PureEd25519.verifyPureJava(primaryPubRaw, validRes.token().signedPayloadBytes(), badSig));
+        byte[] badPayload = validRes.token().signedPayloadBytes().clone();
+        badPayload[badPayload.length - 1] ^= 0x01;
+        assertFalse(PureEd25519.verifyPureJava(primaryPubRaw, badPayload, validRes.token().signature()));
 
         // 2. Rotated key token (SPKI DER pubkey)
         Map<String, Object> rotVec = JsonCodec.asObject(tokens, "rotated_key");

@@ -17,6 +17,8 @@
  */
 package dev.haikyo.core.trust;
 
+import dev.haikyo.core.util.Java8Compat;
+
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Locale;
@@ -33,11 +35,11 @@ public final class AnticheatCheckTable {
     private final Map<String, Map<String, CheckPolicy>> tables;
 
     public AnticheatCheckTable(Map<String, Map<String, CheckPolicy>> tables) {
-        Map<String, Map<String, CheckPolicy>> normalized = new LinkedHashMap<>();
+        Map<String, Map<String, CheckPolicy>> normalized = new LinkedHashMap<String, Map<String, CheckPolicy>>();
         if (tables != null) {
             for (Map.Entry<String, Map<String, CheckPolicy>> acEntry : tables.entrySet()) {
                 String acKey = acEntry.getKey().toLowerCase(Locale.ROOT);
-                Map<String, CheckPolicy> checks = new LinkedHashMap<>();
+                Map<String, CheckPolicy> checks = new LinkedHashMap<String, CheckPolicy>();
                 if (acEntry.getValue() != null) {
                     for (Map.Entry<String, CheckPolicy> checkEntry : acEntry.getValue().entrySet()) {
                         checks.put(checkEntry.getKey().toLowerCase(Locale.ROOT), checkEntry.getValue());
@@ -54,7 +56,7 @@ public final class AnticheatCheckTable {
      * Supports exact match (case-insensitive) and wildcard suffix ({@code "aim*"}).
      */
     public CheckPolicy policyFor(String anticheatId, String checkName) {
-        if (anticheatId == null || checkName == null || checkName.isBlank()) {
+        if (anticheatId == null || Java8Compat.isBlank(checkName)) {
             return CheckPolicy.ALWAYS;
         }
         Map<String, CheckPolicy> acMap = tables.get(anticheatId.toLowerCase(Locale.ROOT));

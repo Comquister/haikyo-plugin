@@ -1,3 +1,7 @@
+.gradle/
+build/
+**/build/
+**/logs/
 target/
 **/*.rs.bk
 Cargo.lock

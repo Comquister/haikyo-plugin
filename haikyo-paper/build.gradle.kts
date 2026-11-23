@@ -2,11 +2,31 @@ plugins {
     java
 }
 
+repositories {
+    maven("https://hub.spigotmc.org/nexus/content/repositories/snapshots/")
+}
+
+tasks.named<JavaCompile>("compileJava") {
+    options.release.set(8)
+    options.compilerArgs.add("-Xlint:-options")
+}
+
+// Allow resolving Java 17+ compileOnly soft-depend APIs (GrimAPI, isolated in GrimAdapter.Registrar)
+// while still compiling haikyo-paper itself strictly to Java 8 bytecode (--release 8).
+configurations.named("compileClasspath") {
+    attributes {
+        attribute(TargetJvmVersion.TARGET_JVM_VERSION_ATTRIBUTE, 25)
+    }
+}
+
 dependencies {
     implementation(project(":haikyo-api"))
     implementation(project(":haikyo-core"))
 
-    compileOnly("io.papermc.paper:paper-api:26.3.build.258-stable")
+    // Compile against Bukkit/Spigot 1.8.8 API with Java 8 bytecode so the compiler itself
+    // enforces universal 1.8 - 26.3 compatibility. Paper/Folia/Adventure modern APIs are
+    // invoked dynamically via dev.haikyo.paper.compat.{PlatformCompat, PlatformScheduler}.
+    compileOnly("org.spigotmc:spigot-api:1.8.8-R0.1-SNAPSHOT")
     compileOnly("ac.grim.grimac:GrimAPI:1.6.0.13")
     compileOnly("de.maxhenkel.voicechat:voicechat-api:2.6.0")
     compileOnly("net.luckperms:api:5.4")

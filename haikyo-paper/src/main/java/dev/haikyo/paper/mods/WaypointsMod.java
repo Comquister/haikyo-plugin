@@ -19,6 +19,7 @@ package dev.haikyo.paper.mods;
 
 import dev.haikyo.api.HaikyoApi;
 import dev.haikyo.core.config.HaikyoConfig;
+import dev.haikyo.core.util.Java8Compat;
 import dev.haikyo.core.util.JsonCodec;
 
 import java.nio.charset.StandardCharsets;
@@ -42,11 +43,11 @@ public final class WaypointsMod {
 
     public WaypointsMod(HaikyoApi api, List<HaikyoConfig.WaypointMarker> initialMarkers) {
         this.api = api;
-        this.markers = initialMarkers == null ? List.of() : List.copyOf(initialMarkers);
+        this.markers = Java8Compat.copyOfList(initialMarkers);
     }
 
     public void enable(List<HaikyoConfig.WaypointMarker> newMarkers) {
-        this.markers = newMarkers == null ? List.of() : List.copyOf(newMarkers);
+        this.markers = Java8Compat.copyOfList(newMarkers);
         if (!registered) {
             api.registerModEndpoint(MOD_ID, VERSION, this::onClientMessage);
             registered = true;

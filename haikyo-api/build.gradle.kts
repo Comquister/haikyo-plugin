@@ -2,6 +2,7 @@ plugins {
     `java-library`
 }
 
-tasks.withType<JavaCompile>().configureEach {
-    options.release.set(21)
+tasks.named<JavaCompile>("compileJava") {
+    options.release.set(8)
+    options.compilerArgs.add("-Xlint:-options")
 }

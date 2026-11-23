@@ -28,15 +28,16 @@ import dev.haikyo.core.protocol.HaikyoChannels;
 import dev.haikyo.core.protocol.WireFrame;
 import dev.haikyo.core.store.RequiresHaikyoStore;
 import dev.haikyo.core.trust.TrustManager;
+import dev.haikyo.core.util.Java8Compat;
 import dev.haikyo.paper.anticheat.GenericAnticheatAdapter;
 import dev.haikyo.paper.anticheat.GrimAdapter;
 import dev.haikyo.paper.anticheat.VulcanAdapter;
+import dev.haikyo.paper.compat.PlatformCompat;
+import dev.haikyo.paper.compat.PlatformScheduler;
 import dev.haikyo.paper.mods.WaypointsMod;
 import dev.haikyo.paper.permissions.HaikyoPermissionManager;
 import dev.haikyo.paper.permissions.LuckPermsHook;
 import dev.haikyo.paper.voice.SvcAdapter;
-import io.papermc.paper.threadedregions.scheduler.ScheduledTask;
-import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
 import org.bukkit.command.PluginCommand;
 import org.bukkit.configuration.file.YamlConfiguration;
@@ -48,27 +49,26 @@ import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.plugin.ServicePriority;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.bukkit.plugin.messaging.Messenger;
 import org.bukkit.plugin.messaging.PluginMessageListener;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.time.Clock;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
-import java.util.concurrent.TimeUnit;
 
 /**
- * Paper & Folia entrypoint for the Haikyo Server Plugin.
+ * Multi-version CraftBukkit / Spigot / Paper / Purpur / Folia entrypoint (Minecraft 1.8 - 26.3).
  *
- * <p><strong>STRICT FOLIA COMPATIBILITY:</strong> This plugin NEVER calls
- * {@code Bukkit.getScheduler()}. All player tasks run on {@code player.getScheduler()}
- * and periodic sweeps run on {@code Bukkit.getAsyncScheduler()} with lock-free
- * {@link ConcurrentHashMap} session state inside {@link TrustManager}.</p>
+ * <p>Uses {@link PlatformScheduler} to run natively on Folia/Paper 1.19.4+ regionized schedulers
+ * when available and cleanly fall back to legacy Bukkit scheduling on 1.8-1.19.3 servers.</p>
  */
 public final class HaikyoPaperPlugin extends JavaPlugin implements Listener, PluginMessageListener {
 
@@ -81,7 +81,7 @@ public final class HaikyoPaperPlugin extends JavaPlugin implements Listener, Plu
     private ScreenshotDeliveryService screenshotService;
     private HaikyoPermissionManager permissionManager;
     private LuckPermsHook.Handle luckPermsHandle;
-    private ScheduledTask reportSweepTask;
+    private PlatformScheduler.CancellableTask reportSweepTask;
 
     @Override
     public void onEnable() {
@@ -100,7 +100,7 @@ public final class HaikyoPaperPlugin extends JavaPlugin implements Listener, Plu
         this.trustManager = new TrustManager(
                 cfg,
                 role,
-                getPluginMeta().getVersion(),
+                PlatformCompat.getPluginVersion(this),
                 store,
                 this::sendPluginPacket,
                 this::kickPlayerLocalized,
@@ -141,7 +141,7 @@ public final class HaikyoPaperPlugin extends JavaPlugin implements Listener, Plu
             }
         });
 
-        // Built-in extra permissions (Folia-safe PermissionAttachment) & optional LuckPerms contexts
+        // Built-in extra permissions (Folia-safe & 1.8-compatible) & optional LuckPerms contexts
         this.permissionManager = new HaikyoPermissionManager(this, trustManager);
         this.luckPermsHandle = LuckPermsHook.tryRegister(trustManager, getLogger());
         if (this.luckPermsHandle != null) {
@@ -189,17 +189,16 @@ public final class HaikyoPaperPlugin extends JavaPlugin implements Listener, Plu
             getLogger().info(localization.get("log.voice_unavailable"));
         }
 
-        // Folia-safe async periodic sweep for missing integrity reports, expired screenshots, and audit log retention
-        this.reportSweepTask = Bukkit.getAsyncScheduler().runAtFixedRate(
+        // Periodic async sweep for missing integrity reports, expired screenshots, and audit log retention
+        this.reportSweepTask = PlatformScheduler.runAsyncAtFixedRate(
                 this,
-                task -> {
+                () -> {
                     trustManager.checkReportTimeouts();
                     screenshotService.purgeExpired();
                     auditLogger.pruneExpired();
                 },
                 10L,
-                10L,
-                TimeUnit.SECONDS
+                10L
         );
 
         // Initialize any already-online players (e.g. hot-reload)
@@ -208,7 +207,9 @@ public final class HaikyoPaperPlugin extends JavaPlugin implements Listener, Plu
             scheduleHandshake(player);
         }
 
-        getLogger().info("Haikyo enabled (role=" + role.wireName()
+        getLogger().info("Haikyo enabled (platform=" + PlatformCompat.serverVersionSummary()
+                + ", scheduler=" + PlatformScheduler.backendName()
+                + ", role=" + role.wireName()
                 + ", require-haikyo=" + cfg.requireHaikyo()
                 + ", mod-rules=" + cfg.modRules().size() + ")");
     }
@@ -272,19 +273,19 @@ public final class HaikyoPaperPlugin extends JavaPlugin implements Listener, Plu
         } else {
             waypointsMod.disable();
         }
-        // Push refreshed mod rules, voice configs, and built-in extra permissions on each player's Folia entity scheduler
         if (permissionManager != null) {
             permissionManager.syncAllOnline();
         }
         for (Player p : Bukkit.getOnlinePlayers()) {
             if (trustManager.isHaikyoClient(p.getUniqueId())) {
-                p.getScheduler().run(this, t -> {
-                    trustManager.sendModRules(p.getUniqueId());
-                    trustManager.sendVoiceConfig(p.getUniqueId());
+                final Player target = p;
+                PlatformScheduler.runForPlayer(this, target, () -> {
+                    trustManager.sendModRules(target.getUniqueId());
+                    trustManager.sendVoiceConfig(target.getUniqueId());
                     if (waypointsMod.isRegistered()) {
-                        waypointsMod.sendSync(p.getUniqueId());
+                        waypointsMod.sendSync(target.getUniqueId());
                     }
-                }, null);
+                });
             }
         }
     }
@@ -319,10 +320,10 @@ public final class HaikyoPaperPlugin extends JavaPlugin implements Listener, Plu
                 getLogger().warning(localization.get("log.proxy_fallback_bad_hmac", player.getName())
                         + " (" + res.failureCode() + ")");
                 // Safe fallback: perform standalone hello + attestation verification
-                player.getScheduler().run(this, t -> {
+                PlatformScheduler.runForPlayer(this, player, () -> {
                     trustManager.sendHello(player.getUniqueId());
                     trustManager.issueAttestChallenge(player.getUniqueId());
-                }, null);
+                });
             } else {
                 if (permissionManager != null) {
                     permissionManager.syncPlayer(player.getUniqueId());
@@ -331,7 +332,7 @@ public final class HaikyoPaperPlugin extends JavaPlugin implements Listener, Plu
                     luckPermsHandle.signalPlayerUpdate(player.getUniqueId());
                 }
                 if (waypointsMod.isRegistered()) {
-                    player.getScheduler().run(this, t -> waypointsMod.sendSync(player.getUniqueId()), null);
+                    PlatformScheduler.runForPlayer(this, player, () -> waypointsMod.sendSync(player.getUniqueId()));
                 }
             }
             return;
@@ -340,13 +341,13 @@ public final class HaikyoPaperPlugin extends JavaPlugin implements Listener, Plu
     }
 
     // -------------------------------------------------------------------------
-    // Folia-safe scheduling & transport
+    // Multi-version scheduling & transport
     // -------------------------------------------------------------------------
 
     private void scheduleHandshake(Player player) {
-        UUID playerId = player.getUniqueId();
+        final UUID playerId = player.getUniqueId();
         // Wait 2 ticks so client completes channel registration before receiving hello / link_request
-        player.getScheduler().runDelayed(this, task -> {
+        PlatformScheduler.runForPlayerDelayed(this, player, () -> {
             if (!player.isOnline()) {
                 return;
             }
@@ -358,17 +359,19 @@ public final class HaikyoPaperPlugin extends JavaPlugin implements Listener, Plu
                 );
                 sendPluginPacket(playerId, HaikyoChannels.LINK, reqFrame);
             }
-        }, null, 2L);
+        }, 2L);
 
-        // Enforce require-haikyo / requires-haikyo.json timeout on the player's entity scheduler
+        // Enforce require-haikyo / requires-haikyo.json timeout
         long timeoutTicks = Math.max(60L, trustManager.config().attestationTimeoutSeconds() * 20L + 10L);
-        player.getScheduler().runDelayed(this, task -> {
+        PlatformScheduler.runForPlayerDelayed(this, player, () -> {
             if (!player.isOnline()) {
                 return;
             }
             Optional<String> kickKey = trustManager.checkAttestationTimeout(playerId);
-            kickKey.ifPresent(key -> kickPlayerLocalized(playerId, key, ""));
-        }, null, timeoutTicks);
+            if (kickKey.isPresent()) {
+                kickPlayerLocalized(playerId, kickKey.get(), "");
+            }
+        }, timeoutTicks);
     }
 
     private boolean sendPluginPacket(UUID playerId, String channel, byte[] wireFrame) {
@@ -384,27 +387,28 @@ public final class HaikyoPaperPlugin extends JavaPlugin implements Listener, Plu
         }
     }
 
-    /**
-     * Sends a signed backend -> proxy {@code haikyo:link} {@code 0x03} frame using the target player
-     * if online, or any online player carrier on this backend (Folia-safe via entity scheduler).
-     */
     private void sendBackendLinkSync(UUID preferredPlayerId, byte[] wireFrame) {
         Player carrier = preferredPlayerId != null ? Bukkit.getPlayer(preferredPlayerId) : null;
         if (carrier == null || !carrier.isOnline()) {
-            carrier = Bukkit.getOnlinePlayers().stream().findFirst().orElse(null);
+            for (Player online : Bukkit.getOnlinePlayers()) {
+                if (online.isOnline()) {
+                    carrier = online;
+                    break;
+                }
+            }
         }
         if (carrier == null || !carrier.isOnline()) {
             return;
         }
-        Player targetCarrier = carrier;
-        targetCarrier.getScheduler().run(this, task -> {
+        final Player targetCarrier = carrier;
+        PlatformScheduler.runForPlayer(this, targetCarrier, () -> {
             if (targetCarrier.isOnline()) {
                 try {
                     targetCarrier.sendPluginMessage(this, HaikyoChannels.LINK, wireFrame);
                 } catch (IllegalArgumentException ignored) {
                 }
             }
-        }, null);
+        });
     }
 
     private void kickPlayerLocalized(UUID playerId, String reasonKey, String detail) {
@@ -412,50 +416,60 @@ public final class HaikyoPaperPlugin extends JavaPlugin implements Listener, Plu
         if (player == null || !player.isOnline()) {
             return;
         }
-        player.getScheduler().run(this, task -> {
+        PlatformScheduler.runForPlayer(this, player, () -> {
             if (!player.isOnline()) {
                 return;
             }
-            String locale = Localization.normalizeLocale(player.locale().toLanguageTag());
+            String locale = PlatformCompat.getPlayerLocale(player, localization.defaultLocale());
             String downloadUrl = trustManager.config().downloadUrl();
             String msg = "kick.attestation_failed".equals(reasonKey)
                     ? localization.getForLocale(locale, reasonKey, detail, downloadUrl)
                     : localization.getForLocale(locale, reasonKey, downloadUrl);
-            player.kick(Component.text(msg));
-        }, null);
+            PlatformCompat.kickPlayer(player, msg);
+        });
     }
 
     // -------------------------------------------------------------------------
-    // Channel registration & Velocity forwarding auto-detection
+    // Channel registration & proxy forwarding auto-detection (1.8 - 26.3)
     // -------------------------------------------------------------------------
 
     private void registerCoreChannels() {
-        var messenger = Bukkit.getMessenger();
+        Messenger messenger = Bukkit.getMessenger();
         for (String ch : HaikyoChannels.CORE_CHANNELS) {
-            messenger.registerOutgoingPluginChannel(this, ch);
-            messenger.registerIncomingPluginChannel(this, ch, this);
+            safeRegisterChannel(messenger, ch);
         }
-        messenger.registerOutgoingPluginChannel(this, HaikyoChannels.LINK);
-        messenger.registerIncomingPluginChannel(this, HaikyoChannels.LINK, this);
+        safeRegisterChannel(messenger, HaikyoChannels.LINK);
+    }
+
+    private void safeRegisterChannel(Messenger messenger, String channel) {
+        try {
+            messenger.registerOutgoingPluginChannel(this, channel);
+            messenger.registerIncomingPluginChannel(this, channel, this);
+        } catch (IllegalArgumentException e) {
+            getLogger().warning("Could not register plugin channel '" + channel
+                    + "' on " + PlatformCompat.serverVersionSummary() + ": " + e.getMessage());
+        }
     }
 
     private void onModChannelLifecycle(String channel, boolean register) {
-        var messenger = Bukkit.getMessenger();
+        Messenger messenger = Bukkit.getMessenger();
         if (register) {
             if (registeredDynamicChannels.add(channel)) {
-                messenger.registerOutgoingPluginChannel(this, channel);
-                messenger.registerIncomingPluginChannel(this, channel, this);
+                safeRegisterChannel(messenger, channel);
             }
         } else {
             if (registeredDynamicChannels.remove(channel)) {
-                messenger.unregisterOutgoingPluginChannel(this, channel);
-                messenger.unregisterIncomingPluginChannel(this, channel, this);
+                try {
+                    messenger.unregisterOutgoingPluginChannel(this, channel);
+                    messenger.unregisterIncomingPluginChannel(this, channel, this);
+                } catch (IllegalArgumentException ignored) {
+                }
             }
         }
     }
 
     private void unregisterAllChannels() {
-        var messenger = Bukkit.getMessenger();
+        Messenger messenger = Bukkit.getMessenger();
         messenger.unregisterIncomingPluginChannel(this);
         messenger.unregisterOutgoingPluginChannel(this);
         registeredDynamicChannels.clear();
@@ -464,9 +478,9 @@ public final class HaikyoPaperPlugin extends JavaPlugin implements Listener, Plu
     private TrustManager.ServerRole resolveEffectiveRole(HaikyoConfig cfg) {
         String configured = cfg.configuredRole();
         boolean wantsBackend = "backend".equals(configured)
-                || ("auto".equals(configured) && detectVelocityForwarding());
+                || ("auto".equals(configured) && detectProxyForwarding());
         if (wantsBackend) {
-            if (cfg.linkSharedSecret() == null || cfg.linkSharedSecret().isBlank()) {
+            if (Java8Compat.isBlank(cfg.linkSharedSecret())) {
                 getLogger().warning(localization.get("log.proxy_fallback_no_secret"));
                 return TrustManager.ServerRole.STANDALONE;
             }
@@ -475,16 +489,33 @@ public final class HaikyoPaperPlugin extends JavaPlugin implements Listener, Plu
         return TrustManager.ServerRole.STANDALONE;
     }
 
-    private boolean detectVelocityForwarding() {
-        Path paperGlobal = Bukkit.getWorldContainer().toPath().resolve("config").resolve("paper-global.yml");
-        if (!Files.isRegularFile(paperGlobal)) {
-            paperGlobal = Path.of("config", "paper-global.yml");
+    private boolean detectProxyForwarding() {
+        Path root = Bukkit.getWorldContainer().toPath();
+        // Paper 1.19 - 26.3: config/paper-global.yml -> proxies.velocity.enabled
+        if (readYamlBoolean(root.resolve("config").resolve("paper-global.yml"), "proxies.velocity.enabled")
+                || readYamlBoolean(Paths.get("config", "paper-global.yml"), "proxies.velocity.enabled")) {
+            return true;
         }
-        if (!Files.isRegularFile(paperGlobal)) {
+        // Paper 1.13 - 1.18.2: paper.yml -> settings.velocity-support.enabled
+        if (readYamlBoolean(root.resolve("paper.yml"), "settings.velocity-support.enabled")
+                || readYamlBoolean(Paths.get("paper.yml"), "settings.velocity-support.enabled")) {
+            return true;
+        }
+        // Spigot / Paper 1.8 - 1.18.2 legacy forwarding: spigot.yml -> settings.bungeecord
+        return readYamlBoolean(root.resolve("spigot.yml"), "settings.bungeecord")
+                || readYamlBoolean(Paths.get("spigot.yml"), "settings.bungeecord");
+    }
+
+    private static boolean readYamlBoolean(Path path, String key) {
+        if (!Files.isRegularFile(path)) {
             return false;
         }
-        YamlConfiguration yml = YamlConfiguration.loadConfiguration(paperGlobal.toFile());
-        return yml.getBoolean("proxies.velocity.enabled", false);
+        try {
+            YamlConfiguration yml = YamlConfiguration.loadConfiguration(path.toFile());
+            return yml.getBoolean(key, false);
+        } catch (Throwable ignored) {
+            return false;
+        }
     }
 
     private void ensureDefaultConfigOnDisk() {

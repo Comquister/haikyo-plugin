@@ -17,6 +17,8 @@
  */
 package dev.haikyo.core.admin;
 
+import dev.haikyo.core.util.Java8Compat;
+
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -35,20 +37,45 @@ import java.util.function.Consumer;
 public final class AdminRequestManager {
     private static final Duration REQUEST_TTL = Duration.ofSeconds(30);
 
-    public record PendingRequest(
-            String requestId,
-            String kind,
-            UUID targetUuid,
-            String targetName,
-            String actorName,
-            Instant createdAt,
-            Consumer<Object> callback
-    ) {
+    public static final class PendingRequest {
+        private final String requestId;
+        private final String kind;
+        private final UUID targetUuid;
+        private final String targetName;
+        private final String actorName;
+        private final Instant createdAt;
+        private final Consumer<Object> callback;
+
+        public PendingRequest(
+                String requestId,
+                String kind,
+                UUID targetUuid,
+                String targetName,
+                String actorName,
+                Instant createdAt,
+                Consumer<Object> callback
+        ) {
+            this.requestId = requestId;
+            this.kind = kind;
+            this.targetUuid = targetUuid;
+            this.targetName = targetName;
+            this.actorName = actorName;
+            this.createdAt = createdAt;
+            this.callback = callback;
+        }
+
+        public String requestId() { return requestId; }
+        public String kind() { return kind; }
+        public UUID targetUuid() { return targetUuid; }
+        public String targetName() { return targetName; }
+        public String actorName() { return actorName; }
+        public Instant createdAt() { return createdAt; }
+        public Consumer<Object> callback() { return callback; }
     }
 
     private final Clock clock;
     private final AtomicLong seq = new AtomicLong(1);
-    private final ConcurrentHashMap<String, PendingRequest> pending = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, PendingRequest> pending = new ConcurrentHashMap<String, PendingRequest>();
 
     public AdminRequestManager(Clock clock) {
         this.clock = clock == null ? Clock.systemUTC() : clock;
@@ -72,7 +99,7 @@ public final class AdminRequestManager {
      * Completes and removes a pending request only if {@code requestId} matches {@code senderUuid}.
      */
     public Optional<PendingRequest> complete(String requestId, UUID senderUuid, String expectedKind) {
-        if (requestId == null || requestId.isBlank() || senderUuid == null) {
+        if (Java8Compat.isBlank(requestId) || senderUuid == null) {
             return Optional.empty();
         }
         PendingRequest req = pending.get(requestId);

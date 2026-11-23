@@ -1,7 +1,7 @@
 name: Haikyo
 version: '${version}'
 main: dev.haikyo.paper.HaikyoPaperPlugin
-api-version: '1.21'
+api-version: '1.13'
 folia-supported: true
 description: Server-side integration for the Haikyo Minecraft Client (attestation, mod rules, integrated anticheat, admin tools, voice chat)
 authors:
