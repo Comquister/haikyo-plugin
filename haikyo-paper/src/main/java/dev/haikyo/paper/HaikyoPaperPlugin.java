@@ -111,6 +111,11 @@ public final class HaikyoPaperPlugin extends JavaPlugin implements Listener, Plu
         if (cfg.waypointsEnabled()) {
             waypointsMod.enable(cfg.waypointMarkers());
         }
+        trustManager.addHandshakeListener(playerId -> {
+            if (waypointsMod != null && waypointsMod.isRegistered()) {
+                waypointsMod.sendSync(playerId);
+            }
+        });
 
         // Register listeners & commands
         Bukkit.getPluginManager().registerEvents(this, this);

@@ -138,27 +138,33 @@ class GenericAdapterAndWaypointsTest {
         var marker = new HaikyoConfig.WaypointMarker("spawn", "Spawn", "minecraft:overworld", 0.0, 64.0, 0.0, "#FF6B35");
         WaypointsMod mod = new WaypointsMod(tm, List.of(marker));
         mod.enable(List.of(marker));
+        tm.addHandshakeListener(pid -> {
+            if (mod.isRegistered()) {
+                mod.sendSync(pid);
+            }
+        });
         assertTrue(tm.advertisedModCapabilities().contains("waypoints@1"));
 
         UUID player = UUID.randomUUID();
         tm.onPlayerJoin(player, "Explorer");
-        // Mark as Haikyo client via hello_ack
+        // Mark as Haikyo client via hello_ack -> handshake listener proactively pushes sync!
         byte[] ackFrame = WireFrame.encodeUnfragmented(
                 HaikyoChannels.PKT_CONTROL_HELLO_ACK,
                 "{\"protocol_version\":1,\"client_version\":\"v2026.11.22\",\"channel\":\"release\",\"channels\":{\"control\":1},\"mod_channels\":[\"waypoints@1\"],\"consented_scopes\":[\"version\"]}"
                         .getBytes(StandardCharsets.UTF_8)
         );
         tm.handleClientMessage(player, HaikyoChannels.CONTROL, ackFrame);
+        assertEquals(1, outgoingWaypoints.size(), "hello_ack should proactively push waypoints sync on standalone");
 
-        // Client requests waypoint sync
+        // Explicit client request_sync also sends sync
         byte[] reqFrame = WireFrame.encodeUnfragmented(
                 HaikyoChannels.PKT_MOD_OPAQUE,
                 "{\"op\":\"request_sync\"}".getBytes(StandardCharsets.UTF_8)
         );
         tm.handleClientMessage(player, "haikyo:mod/waypoints", reqFrame);
 
-        assertEquals(1, outgoingWaypoints.size());
-        var decoded = assertInstanceOf(WireFrame.DecodeOk.class, WireFrame.decode(outgoingWaypoints.get(0), HaikyoChannels.MAX_S2C_WIRE_BYTES));
+        assertEquals(2, outgoingWaypoints.size());
+        var decoded = assertInstanceOf(WireFrame.DecodeOk.class, WireFrame.decode(outgoingWaypoints.get(1), HaikyoChannels.MAX_S2C_WIRE_BYTES));
         Map<String, Object> msg = JsonCodec.parseObject(new String(decoded.frame().payload(), StandardCharsets.UTF_8));
         assertEquals("sync", JsonCodec.asString(msg, "op", ""));
         assertEquals(1, JsonCodec.asList(msg, "markers").size());

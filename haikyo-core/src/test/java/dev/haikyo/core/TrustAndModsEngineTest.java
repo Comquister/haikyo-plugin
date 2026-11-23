@@ -352,6 +352,43 @@ class TrustAndModsEngineTest {
         assertTrue(backendSent.stream().anyMatch(p -> "haikyo:mod/waypoints".equals(p.channel())));
     }
 
+    @Test
+    void proxyRoleDoesNotFlagBackendModRulesOnIntegrityReport(@TempDir Path tmp) throws Exception {
+        KeyPair kp = generateEd25519KeyPair();
+        String pubB64 = Base64.getEncoder().encodeToString(kp.getPublic().getEncoded());
+        MutableClock clock = new MutableClock(Instant.ofEpochSecond(1_800_000_000L));
+        RequiresHaikyoStore store = new RequiresHaikyoStore(tmp.resolve("requires-haikyo.json"));
+
+        TrustManager proxy = new TrustManager(
+                testConfig("k1", pubB64, 0.0, "proxy-secret"),
+                TrustManager.ServerRole.PROXY, "0.1.0", store,
+                (p, c, d) -> true, null, null, clock, () -> 0.5
+        );
+        UUID player = UUID.randomUUID();
+        proxy.onPlayerJoin(player, "VelocityPlayer");
+        var ch = proxy.issueAttestChallenge(player);
+        String tok = signToken(kp, "k1", "v2026.11.22", player, Hex.decode(ch.nonceHex()),
+                "play.test.local:25565", clock.instant().getEpochSecond() - 1, clock.instant().getEpochSecond() + 120);
+        proxy.handleClientMessage(player, HaikyoChannels.ATTEST,
+                WireFrame.encodeUnfragmented(HaikyoChannels.PKT_ATTEST_RESPONSE, new ProtocolMessages.AttestResponse(tok, null).encodeJson()));
+        assertEquals(TrustLevel.ATTESTED, proxy.getTrustLevel(player));
+
+        // Even if proxy config happens to contain mods.rules (e.g. minimap=block, zoom=limit),
+        // proxy never sends mods.rules so it must NOT flag the player SUSPECT on integrity_report!
+        byte[] sessionKey = Hex.decode(ch.sessionKeyHex());
+        ProtocolMessages.IntegrityReport report = buildSignedReport(
+                1, clock.instant().getEpochSecond(),
+                Map.of(
+                        "zoom", new ProtocolMessages.ReportedModState(true, Map.of("max_factor", 5.0)),
+                        "minimap", new ProtocolMessages.ReportedModState(true, Map.of())
+                ),
+                false, List.of(), sessionKey
+        );
+        proxy.handleClientMessage(player, HaikyoChannels.ATTEST, encodeReportFrame(report));
+        assertEquals(TrustLevel.ATTESTED, proxy.getTrustLevel(player));
+        assertTrue(proxy.getPlayerSession(player).orElseThrow().signals().isEmpty());
+    }
+
     private static ProtocolMessages.IntegrityReport buildSignedReport(
             long seq,
             long ts,

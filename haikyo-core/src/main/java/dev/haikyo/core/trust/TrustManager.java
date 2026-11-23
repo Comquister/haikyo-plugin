@@ -54,6 +54,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
 import java.util.function.DoubleSupplier;
 
 /**
@@ -116,6 +117,7 @@ public final class TrustManager implements HaikyoApi {
     private final ConcurrentHashMap<String, RegisteredModEndpoint> modEndpoints = new ConcurrentHashMap<>();
     private final CopyOnWriteArrayList<TrustChangeListener> trustListeners = new CopyOnWriteArrayList<>();
     private final CopyOnWriteArrayList<ModSignalListener> signalListeners = new CopyOnWriteArrayList<>();
+    private final CopyOnWriteArrayList<Consumer<UUID>> handshakeListeners = new CopyOnWriteArrayList<>();
     private final AtomicInteger nextFragId = new AtomicInteger(1);
 
     public TrustManager(
@@ -273,6 +275,16 @@ public final class TrustManager implements HaikyoApi {
     @Override
     public void removeModSignalListener(ModSignalListener listener) {
         signalListeners.remove(listener);
+    }
+
+    public void addHandshakeListener(Consumer<UUID> listener) {
+        if (listener != null) {
+            handshakeListeners.addIfAbsent(listener);
+        }
+    }
+
+    public void removeHandshakeListener(Consumer<UUID> listener) {
+        handshakeListeners.remove(listener);
     }
 
     @Override
@@ -538,6 +550,12 @@ public final class TrustManager implements HaikyoApi {
         if (shouldChallenge) {
             issueAttestChallenge(s.playerId);
         }
+        for (Consumer<UUID> l : handshakeListeners) {
+            try {
+                l.accept(s.playerId);
+            } catch (RuntimeException ignored) {
+            }
+        }
     }
 
     private void handleAttestResponse(MutableSession s, ProtocolMessages.AttestResponse resp) {
@@ -617,9 +635,12 @@ public final class TrustManager implements HaikyoApi {
                 transitionToSuspect(s, "", "client_signal:" + sig, "Client integrity signal: " + sig);
             }
         }
-        List<ModRuleEngine.ModViolation> violations = modRuleEngine.verifyCompliance(report.mods());
-        for (ModRuleEngine.ModViolation v : violations) {
-            transitionToSuspect(s, v.modId(), v.code(), v.detail());
+        // Proxy role does not send or own backend mods.rules; only standalone/backend enforce mod rules
+        if (effectiveRole != ServerRole.PROXY) {
+            List<ModRuleEngine.ModViolation> violations = modRuleEngine.verifyCompliance(report.mods());
+            for (ModRuleEngine.ModViolation v : violations) {
+                transitionToSuspect(s, v.modId(), v.code(), v.detail());
+            }
         }
     }
 
