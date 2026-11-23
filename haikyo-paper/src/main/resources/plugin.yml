@@ -1,0 +1,40 @@
+name: Haikyo
+version: '${version}'
+main: dev.haikyo.paper.HaikyoPaperPlugin
+api-version: '1.21'
+folia-supported: true
+description: Server-side integration for the Haikyo Minecraft Client (attestation, mod rules, integrated anticheat)
+authors:
+  - Haikyo Project Contributors
+website: https://haikyo.conquister.net
+softdepend:
+  - GrimAC
+  - Vulcan
+
+commands:
+  haikyo:
+    description: Manage Haikyo client integration, player trust status, and requires-haikyo pardons.
+    usage: /haikyo <status [player] | pardon <player> | suspect <player> [reason] | reload>
+    permission: haikyo.command.status
+
+permissions:
+  haikyo.admin:
+    description: Grants access to all Haikyo administrative commands.
+    default: op
+    children:
+      haikyo.command.status: true
+      haikyo.command.pardon: true
+      haikyo.command.suspect: true
+      haikyo.command.reload: true
+  haikyo.command.status:
+    description: View Haikyo client and attestation status of online players.
+    default: op
+  haikyo.command.pardon:
+    description: Remove a player from requires-haikyo.json.
+    default: op
+  haikyo.command.suspect:
+    description: Mark a player as SUSPECT and optionally require attested Haikyo.
+    default: op
+  haikyo.command.reload:
+    description: Reload Haikyo configuration and mod rules.
+    default: op
