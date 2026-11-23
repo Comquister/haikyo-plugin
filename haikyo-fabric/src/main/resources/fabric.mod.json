@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "id": "haikyo",
+  "version": "${version}",
+  "name": "Haikyo",
+  "description": "Server-side integration for the Haikyo Minecraft Client (attestation, mod rules, trust levels, admin tools, Simple Voice Chat extras)",
+  "authors": [
+    "Haikyo Project Contributors"
+  ],
+  "contact": {
+    "homepage": "https://haikyo.conquister.net"
+  },
+  "license": "AGPL-3.0-or-later",
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      "dev.haikyo.fabric.HaikyoFabricMod"
+    ],
+    "voicechat": [
+      "dev.haikyo.fabric.HaikyoFabricVoicePlugin"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.19.0",
+    "minecraft": "~26.3",
+    "java": ">=25",
+    "fabric-api": "*"
+  },
+  "suggests": {
+    "voicechat": ">=2.6.0"
+  }
+}
