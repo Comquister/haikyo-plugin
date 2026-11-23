@@ -8,8 +8,10 @@ dependencies {
 
     compileOnly("com.velocitypowered:velocity-api:4.3.1")
     annotationProcessor("com.velocitypowered:velocity-api:4.3.1")
+    compileOnly("net.luckperms:api:5.4")
 
     testImplementation("com.velocitypowered:velocity-api:4.3.1")
+    testImplementation("net.luckperms:api:5.4")
     testImplementation(platform("org.junit:junit-bom:5.11.4"))
     testImplementation("org.junit.jupiter:junit-jupiter")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")

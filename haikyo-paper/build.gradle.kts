@@ -9,10 +9,12 @@ dependencies {
     compileOnly("io.papermc.paper:paper-api:26.3.build.258-stable")
     compileOnly("ac.grim.grimac:GrimAPI:1.6.0.13")
     compileOnly("de.maxhenkel.voicechat:voicechat-api:2.6.0")
+    compileOnly("net.luckperms:api:5.4")
 
     testImplementation("io.papermc.paper:paper-api:26.3.build.258-stable")
     testImplementation("ac.grim.grimac:GrimAPI:1.6.0.13")
     testImplementation("de.maxhenkel.voicechat:voicechat-api:2.6.0")
+    testImplementation("net.luckperms:api:5.4")
     testImplementation(platform("org.junit:junit-bom:5.11.4"))
     testImplementation("org.junit.jupiter:junit-jupiter")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")

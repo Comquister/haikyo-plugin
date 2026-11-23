@@ -27,6 +27,7 @@
     "fabric-api": "*"
   },
   "suggests": {
-    "voicechat": ">=2.6.0"
+    "voicechat": ">=2.6.0",
+    "luckperms": "*"
   }
 }

@@ -76,6 +76,7 @@ public final class HaikyoFabricMod implements ModInitializer {
     private TrustManager trustManager;
     private AuditLogger auditLogger;
     private ScreenshotDeliveryService screenshotService;
+    private LuckPermsFabricHook.Handle luckPermsHandle;
     private long serverTicks;
 
     @Override
@@ -134,6 +135,14 @@ public final class HaikyoFabricMod implements ModInitializer {
             if (trustManager.config().waypointsEnabled()) {
                 sendWaypointsSync(playerId);
             }
+            if (luckPermsHandle != null) {
+                luckPermsHandle.signalPlayerUpdate(playerId);
+            }
+        });
+        trustManager.addTrustChangeListener(ev -> {
+            if (luckPermsHandle != null) {
+                luckPermsHandle.signalPlayerUpdate(ev.playerId());
+            }
         });
 
         HaikyoApiProvider.register(trustManager);
@@ -144,6 +153,10 @@ public final class HaikyoFabricMod implements ModInitializer {
         ServerLifecycleEvents.SERVER_STARTED.register(server -> {
             this.currentServer = server;
             this.serverTicks = 0L;
+            this.luckPermsHandle = LuckPermsFabricHook.tryRegister(() -> this.currentServer, trustManager);
+            if (this.luckPermsHandle != null) {
+                LOGGER.info("Hooked into LuckPerms context calculator on Fabric.");
+            }
             LOGGER.info("Haikyo Fabric enabled (require-haikyo={}, mod-rules={})",
                     trustManager.config().requireHaikyo(), trustManager.config().modRules().size());
         });
@@ -151,6 +164,10 @@ public final class HaikyoFabricMod implements ModInitializer {
         ServerLifecycleEvents.SERVER_STOPPING.register(server -> {
             this.currentServer = null;
             pendingHelloTick.clear();
+            if (luckPermsHandle != null) {
+                luckPermsHandle.close();
+                luckPermsHandle = null;
+            }
             if (screenshotService != null) {
                 screenshotService.close();
             }

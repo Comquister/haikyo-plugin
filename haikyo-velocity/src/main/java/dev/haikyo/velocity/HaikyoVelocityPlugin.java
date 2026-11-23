@@ -26,6 +26,7 @@ import com.velocitypowered.api.event.connection.PostLoginEvent;
 import com.velocitypowered.api.event.player.ServerPostConnectEvent;
 import com.velocitypowered.api.event.proxy.ProxyInitializeEvent;
 import com.velocitypowered.api.event.proxy.ProxyShutdownEvent;
+import com.velocitypowered.api.plugin.Dependency;
 import com.velocitypowered.api.plugin.Plugin;
 import com.velocitypowered.api.plugin.annotation.DataDirectory;
 import com.velocitypowered.api.proxy.Player;
@@ -72,7 +73,8 @@ import java.util.concurrent.ThreadLocalRandom;
         version = "0.1.0-SNAPSHOT",
         url = "https://haikyo.conquister.net",
         description = "Velocity proxy integration for the Haikyo Minecraft Client",
-        authors = {"Haikyo Project Contributors"}
+        authors = {"Haikyo Project Contributors"},
+        dependencies = {@Dependency(id = "luckperms", optional = true)}
 )
 public final class HaikyoVelocityPlugin {
 
@@ -86,6 +88,7 @@ public final class HaikyoVelocityPlugin {
 
     private volatile Localization localization;
     private TrustManager trustManager;
+    private LuckPermsVelocityHook.Handle luckPermsHandle;
 
     @Inject
     public HaikyoVelocityPlugin(ProxyServer server, Logger logger, @DataDirectory Path dataDirectory) {
@@ -119,8 +122,23 @@ public final class HaikyoVelocityPlugin {
                 () -> ThreadLocalRandom.current().nextDouble()
         );
 
-        // Whenever trust level changes on the proxy (e.g. ATTESTED or SUSPECT), push updated haikyo:link to current backend
-        trustManager.addTrustChangeListener(ev -> server.getPlayer(ev.playerId()).ifPresent(this::pushLinkToCurrentBackend));
+        // Whenever trust level changes on the proxy (e.g. ATTESTED or SUSPECT), push updated haikyo:link & refresh LuckPerms contexts
+        trustManager.addTrustChangeListener(ev -> {
+            server.getPlayer(ev.playerId()).ifPresent(this::pushLinkToCurrentBackend);
+            if (luckPermsHandle != null) {
+                luckPermsHandle.signalPlayerUpdate(ev.playerId());
+            }
+        });
+        trustManager.addHandshakeListener(playerId -> {
+            if (luckPermsHandle != null) {
+                luckPermsHandle.signalPlayerUpdate(playerId);
+            }
+        });
+
+        this.luckPermsHandle = LuckPermsVelocityHook.tryRegister(server, trustManager, logger);
+        if (this.luckPermsHandle != null) {
+            logger.info("Hooked into LuckPerms context calculator on Velocity.");
+        }
 
         HaikyoApiProvider.register(trustManager);
 
@@ -146,6 +164,10 @@ public final class HaikyoVelocityPlugin {
 
     @Subscribe
     public void onProxyShutdown(ProxyShutdownEvent event) {
+        if (luckPermsHandle != null) {
+            luckPermsHandle.close();
+            luckPermsHandle = null;
+        }
         if (trustManager != null) {
             HaikyoApiProvider.unregister(trustManager);
         }

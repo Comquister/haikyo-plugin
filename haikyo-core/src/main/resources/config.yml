@@ -166,3 +166,11 @@ voice:
   falloff-factor: 1.0
   allow-groups: true
   recording-allowed: false
+
+# Built-in extra permission nodes granted dynamically on Paper/Folia (works even without LuckPerms).
+# If LuckPerms is installed, you can also use dynamic contexts: haikyo-client, haikyo-attested, haikyo-trust, haikyo-channel.
+permissions:
+  # Permission nodes granted while the player is connected with the Haikyo Client.
+  on-haikyo: []
+  # Permission nodes granted while the player's trust level is ATTESTED (revoked immediately if SUSPECT/NONE or on quit).
+  on-attested: []

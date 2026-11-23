@@ -11,6 +11,7 @@ softdepend:
   - GrimAC
   - Vulcan
   - voicechat
+  - LuckPerms
 
 commands:
   haikyo:

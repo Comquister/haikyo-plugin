@@ -18,6 +18,8 @@
 package dev.haikyo.core.trust;
 
 import dev.haikyo.api.HaikyoApi;
+import dev.haikyo.api.IntegrityReportListener;
+import dev.haikyo.api.IntegritySnapshot;
 import dev.haikyo.api.ModMessageHandler;
 import dev.haikyo.api.ModSignalEvent;
 import dev.haikyo.api.ModSignalListener;
@@ -123,6 +125,7 @@ public final class TrustManager implements HaikyoApi {
     private final ConcurrentHashMap<String, RegisteredModEndpoint> modEndpoints = new ConcurrentHashMap<>();
     private final CopyOnWriteArrayList<TrustChangeListener> trustListeners = new CopyOnWriteArrayList<>();
     private final CopyOnWriteArrayList<ModSignalListener> signalListeners = new CopyOnWriteArrayList<>();
+    private final CopyOnWriteArrayList<IntegrityReportListener> integrityListeners = new CopyOnWriteArrayList<>();
     private final CopyOnWriteArrayList<Consumer<UUID>> handshakeListeners = new CopyOnWriteArrayList<>();
     private final AtomicInteger nextFragId = new AtomicInteger(1);
 
@@ -346,9 +349,25 @@ public final class TrustManager implements HaikyoApi {
     }
 
     @Override
+    public boolean isAttested(UUID playerId) {
+        return getTrustLevel(playerId) == TrustLevel.ATTESTED;
+    }
+
+    @Override
     public Optional<PlayerSession> getPlayerSession(UUID playerId) {
         MutableSession s = sessions.get(playerId);
         return s == null ? Optional.empty() : Optional.of(s.snapshot());
+    }
+
+    @Override
+    public Optional<IntegritySnapshot> getLastIntegritySnapshot(UUID playerId) {
+        MutableSession s = sessions.get(playerId);
+        if (s == null) {
+            return Optional.empty();
+        }
+        synchronized (s) {
+            return Optional.ofNullable(s.lastIntegritySnapshot);
+        }
     }
 
     public List<PlayerSession> allSessions() {
@@ -383,6 +402,18 @@ public final class TrustManager implements HaikyoApi {
         signalListeners.remove(listener);
     }
 
+    @Override
+    public void registerIntegrityListener(IntegrityReportListener listener) {
+        if (listener != null) {
+            integrityListeners.addIfAbsent(listener);
+        }
+    }
+
+    @Override
+    public void unregisterIntegrityListener(IntegrityReportListener listener) {
+        integrityListeners.remove(listener);
+    }
+
     public void addHandshakeListener(Consumer<UUID> listener) {
         if (listener != null) {
             handshakeListeners.addIfAbsent(listener);
@@ -402,6 +433,34 @@ public final class TrustManager implements HaikyoApi {
         String r = (reason == null || reason.isBlank()) ? "manual_suspect" : reason;
         transitionToSuspect(s, "", "suspect:" + r, r);
         return true;
+    }
+
+    @Override
+    public void addExternalSignal(UUID playerId, String sourcePlugin, String signalName) {
+        MutableSession s = sessions.get(playerId);
+        if (s == null) {
+            return;
+        }
+        String src = (sourcePlugin == null || sourcePlugin.isBlank()) ? "external" : sourcePlugin.trim();
+        String sig = (signalName == null || signalName.isBlank()) ? "signal" : signalName.trim();
+        transitionToSuspect(s, src, "external:" + src + ":" + sig, "External signal from " + src + ": " + sig);
+    }
+
+    @Override
+    public void flagSuspect(UUID playerId, String sourcePlugin, String reason) {
+        if (playerId == null) {
+            return;
+        }
+        String src = (sourcePlugin == null || sourcePlugin.isBlank()) ? "external" : sourcePlugin.trim();
+        String r = (reason == null || reason.isBlank()) ? "flagged_by_" + src : reason.trim();
+        MutableSession s = sessions.get(playerId);
+        String name = s == null ? "" : s.playerName;
+        markSuspectAndMaybeRequire(playerId, name, r, "plugin:" + src);
+    }
+
+    @Override
+    public boolean shouldRelaxCheck(UUID playerId, String anticheatName, String checkName) {
+        return evaluateFlag(playerId, anticheatName, checkName).cancelFlag();
     }
 
     // -------------------------------------------------------------------------
@@ -820,9 +879,30 @@ public final class TrustManager implements HaikyoApi {
             transitionToSuspect(s, "", "replayed_report_seq", "Integrity report seq not monotonic: " + report.seq());
             return;
         }
+        Instant now = clock.instant();
+        Map<String, IntegritySnapshot.ModState> snapMods = new LinkedHashMap<>();
+        for (Map.Entry<String, ProtocolMessages.ReportedModState> e : report.mods().entrySet()) {
+            snapMods.put(e.getKey(), new IntegritySnapshot.ModState(e.getValue().enabled(), e.getValue().params()));
+        }
+        IntegritySnapshot snapshot = new IntegritySnapshot(
+                s.playerId,
+                report.seq(),
+                Instant.ofEpochSecond(report.timestamp()),
+                now,
+                snapMods,
+                report.agentControl(),
+                report.signals()
+        );
         synchronized (s) {
             s.lastReportSeq = report.seq();
-            s.lastReportAt = clock.instant();
+            s.lastReportAt = now;
+            s.lastIntegritySnapshot = snapshot;
+        }
+        for (IntegrityReportListener listener : integrityListeners) {
+            try {
+                listener.onIntegrityReport(snapshot);
+            } catch (RuntimeException ignored) {
+            }
         }
 
         if (report.agentControl() && config.requireNoAgent()) {
@@ -1101,6 +1181,7 @@ public final class TrustManager implements HaikyoApi {
         final List<String> signals = new ArrayList<>();
         Instant attestedAt;
         Instant lastReportAt;
+        IntegritySnapshot lastIntegritySnapshot;
         String proxyId;
         boolean proxySessionTrusted;
         byte[] pendingNonce;

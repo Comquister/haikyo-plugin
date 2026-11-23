@@ -68,6 +68,7 @@ Plugin e mod oficial do servidor para integração com o **Haikyo Client** em **
 
 - [Configuration Reference & Anticheat Check Table](docs/configuration.md)
 - [Commands & Permissions](docs/permissions.md)
+- [Public API, LuckPerms Contexts & Dynamic Permissions](docs/api.md)
 - [Privacy & LGPD/GDPR Notice for Server Owners](docs/privacy.md)
 
 ## Public API Example (`haikyo-api`)

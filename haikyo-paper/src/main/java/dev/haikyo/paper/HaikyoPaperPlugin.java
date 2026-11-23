@@ -32,6 +32,8 @@ import dev.haikyo.paper.anticheat.GenericAnticheatAdapter;
 import dev.haikyo.paper.anticheat.GrimAdapter;
 import dev.haikyo.paper.anticheat.VulcanAdapter;
 import dev.haikyo.paper.mods.WaypointsMod;
+import dev.haikyo.paper.permissions.HaikyoPermissionManager;
+import dev.haikyo.paper.permissions.LuckPermsHook;
 import dev.haikyo.paper.voice.SvcAdapter;
 import io.papermc.paper.threadedregions.scheduler.ScheduledTask;
 import net.kyori.adventure.text.Component;
@@ -77,6 +79,8 @@ public final class HaikyoPaperPlugin extends JavaPlugin implements Listener, Plu
     private WaypointsMod waypointsMod;
     private AuditLogger auditLogger;
     private ScreenshotDeliveryService screenshotService;
+    private HaikyoPermissionManager permissionManager;
+    private LuckPermsHook.Handle luckPermsHandle;
     private ScheduledTask reportSweepTask;
 
     @Override
@@ -121,7 +125,28 @@ public final class HaikyoPaperPlugin extends JavaPlugin implements Listener, Plu
             if (waypointsMod != null && waypointsMod.isRegistered()) {
                 waypointsMod.sendSync(playerId);
             }
+            if (permissionManager != null) {
+                permissionManager.syncPlayer(playerId);
+            }
+            if (luckPermsHandle != null) {
+                luckPermsHandle.signalPlayerUpdate(playerId);
+            }
         });
+        trustManager.addTrustChangeListener(ev -> {
+            if (permissionManager != null) {
+                permissionManager.syncPlayer(ev.playerId());
+            }
+            if (luckPermsHandle != null) {
+                luckPermsHandle.signalPlayerUpdate(ev.playerId());
+            }
+        });
+
+        // Built-in extra permissions (Folia-safe PermissionAttachment) & optional LuckPerms contexts
+        this.permissionManager = new HaikyoPermissionManager(this, trustManager);
+        this.luckPermsHandle = LuckPermsHook.tryRegister(trustManager, getLogger());
+        if (this.luckPermsHandle != null) {
+            getLogger().info("Hooked into LuckPerms context calculator (haikyo-client, haikyo-attested, haikyo-trust, haikyo-channel).");
+        }
 
         // Register listeners & commands
         Bukkit.getPluginManager().registerEvents(this, this);
@@ -194,6 +219,13 @@ public final class HaikyoPaperPlugin extends JavaPlugin implements Listener, Plu
             reportSweepTask.cancel();
             reportSweepTask = null;
         }
+        if (luckPermsHandle != null) {
+            luckPermsHandle.close();
+            luckPermsHandle = null;
+        }
+        if (permissionManager != null) {
+            permissionManager.clearAll();
+        }
         if (screenshotService != null) {
             screenshotService.close();
         }
@@ -240,7 +272,10 @@ public final class HaikyoPaperPlugin extends JavaPlugin implements Listener, Plu
         } else {
             waypointsMod.disable();
         }
-        // Push refreshed mod rules & voice configs to all online Haikyo clients on their own Folia entity schedulers
+        // Push refreshed mod rules, voice configs, and built-in extra permissions on each player's Folia entity scheduler
+        if (permissionManager != null) {
+            permissionManager.syncAllOnline();
+        }
         for (Player p : Bukkit.getOnlinePlayers()) {
             if (trustManager.isHaikyoClient(p.getUniqueId())) {
                 p.getScheduler().run(this, t -> {
@@ -267,6 +302,9 @@ public final class HaikyoPaperPlugin extends JavaPlugin implements Listener, Plu
 
     @EventHandler(priority = EventPriority.MONITOR)
     public void onPlayerQuit(PlayerQuitEvent event) {
+        if (permissionManager != null) {
+            permissionManager.clearPlayer(event.getPlayer());
+        }
         trustManager.onPlayerQuit(event.getPlayer().getUniqueId());
     }
 
@@ -285,8 +323,16 @@ public final class HaikyoPaperPlugin extends JavaPlugin implements Listener, Plu
                     trustManager.sendHello(player.getUniqueId());
                     trustManager.issueAttestChallenge(player.getUniqueId());
                 }, null);
-            } else if (waypointsMod.isRegistered()) {
-                player.getScheduler().run(this, t -> waypointsMod.sendSync(player.getUniqueId()), null);
+            } else {
+                if (permissionManager != null) {
+                    permissionManager.syncPlayer(player.getUniqueId());
+                }
+                if (luckPermsHandle != null) {
+                    luckPermsHandle.signalPlayerUpdate(player.getUniqueId());
+                }
+                if (waypointsMod.isRegistered()) {
+                    player.getScheduler().run(this, t -> waypointsMod.sendSync(player.getUniqueId()), null);
+                }
             }
             return;
         }

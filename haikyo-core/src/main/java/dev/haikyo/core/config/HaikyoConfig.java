@@ -70,10 +70,11 @@ public record HaikyoConfig(
         boolean genericAdapterEnabled,
         List<String> genericCommandPatterns,
         AdminConfig admin,
-        VoiceConfig voice
+        VoiceConfig voice,
+        PermissionsConfig permissions
 ) {
     /**
-     * Convenience constructor defaulting {@link AdminConfig} and {@link VoiceConfig}.
+     * Convenience constructor defaulting {@link AdminConfig}, {@link VoiceConfig}, and {@link PermissionsConfig}.
      */
     public HaikyoConfig(
             String language,
@@ -110,7 +111,53 @@ public record HaikyoConfig(
                 waypointsEnabled, waypointMarkers, samplingFraction,
                 promoteSuspectToRequire, useInputTelemetry, checkTable,
                 genericAdapterEnabled, genericCommandPatterns,
-                AdminConfig.defaults(), VoiceConfig.defaults()
+                AdminConfig.defaults(), VoiceConfig.defaults(), PermissionsConfig.empty()
+        );
+    }
+
+    /**
+     * Convenience constructor defaulting {@link PermissionsConfig}.
+     */
+    public HaikyoConfig(
+            String language,
+            String configuredRole,
+            String serverAddress,
+            String serverId,
+            String downloadUrl,
+            boolean requireHaikyo,
+            int attestationTimeoutSeconds,
+            List<String> consentScopes,
+            Map<String, String> attestationPublicKeys,
+            Set<String> revokedVersions,
+            boolean requireNoAgent,
+            int reportIntervalMinSeconds,
+            int reportIntervalMaxSeconds,
+            String linkSharedSecret,
+            int linkSessionTtlSeconds,
+            boolean linkSyncRequiresToProxy,
+            boolean linkAcceptBackendRequiresSync,
+            Map<String, ModRule> modRules,
+            boolean waypointsEnabled,
+            List<WaypointMarker> waypointMarkers,
+            double samplingFraction,
+            boolean promoteSuspectToRequire,
+            boolean useInputTelemetry,
+            AnticheatCheckTable checkTable,
+            boolean genericAdapterEnabled,
+            List<String> genericCommandPatterns,
+            AdminConfig admin,
+            VoiceConfig voice
+    ) {
+        this(
+                language, configuredRole, serverAddress, serverId, downloadUrl,
+                requireHaikyo, attestationTimeoutSeconds, consentScopes,
+                attestationPublicKeys, revokedVersions, requireNoAgent,
+                reportIntervalMinSeconds, reportIntervalMaxSeconds,
+                linkSharedSecret, linkSessionTtlSeconds, linkSyncRequiresToProxy,
+                linkAcceptBackendRequiresSync, modRules, waypointsEnabled,
+                waypointMarkers, samplingFraction, promoteSuspectToRequire,
+                useInputTelemetry, checkTable, genericAdapterEnabled,
+                genericCommandPatterns, admin, voice, PermissionsConfig.empty()
         );
     }
 
@@ -169,6 +216,20 @@ public record HaikyoConfig(
     ) {
         public static VoiceConfig defaults() {
             return new VoiceConfig("auto", 48.0, 16.0, "natural", 1.0, true, false);
+        }
+    }
+
+    public record PermissionsConfig(
+            List<String> onHaikyo,
+            List<String> onAttested
+    ) {
+        public PermissionsConfig {
+            onHaikyo = onHaikyo == null ? List.of() : List.copyOf(onHaikyo);
+            onAttested = onAttested == null ? List.of() : List.copyOf(onAttested);
+        }
+
+        public static PermissionsConfig empty() {
+            return new PermissionsConfig(List.of(), List.of());
         }
     }
 
@@ -340,6 +401,13 @@ public record HaikyoConfig(
                 JsonCodec.asBoolean(voiceMap, "recording-allowed", false)
         );
 
+        // Built-in extra permissions (works even without LuckPerms)
+        Map<String, Object> permMap = JsonCodec.asObject(root, "permissions");
+        PermissionsConfig permCfg = new PermissionsConfig(
+                JsonCodec.asStringList(permMap, "on-haikyo"),
+                JsonCodec.asStringList(permMap, "on-attested")
+        );
+
         return new HaikyoConfig(
                 language,
                 role,
@@ -368,7 +436,8 @@ public record HaikyoConfig(
                 genericEnabled,
                 List.copyOf(genericPatterns),
                 adminCfg,
-                voiceCfg
+                voiceCfg,
+                permCfg
         );
     }
 }

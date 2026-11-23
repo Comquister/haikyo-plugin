@@ -110,3 +110,12 @@ Clients apply `mods.rules` locally and report active mod states in signed integr
 | `voice.falloff-factor` | double | `1.0` | Attenuation multiplier. |
 | `voice.allow-groups` | boolean | `true` | Whether players may join SVC groups (enforced via `JoinGroupEvent`). |
 | `voice.recording-allowed` | boolean | `false` | Recording is disabled by default; this plugin never records audio. |
+
+## Dynamic Permissions (`permissions.*`) & LuckPerms Contexts
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `permissions.on-haikyo` | list | `[]` | Permission nodes granted dynamically on Paper/Folia while the player is connected with Haikyo Client (works even without LuckPerms). |
+| `permissions.on-attested` | list | `[]` | Permission nodes granted while the player's trust level is `ATTESTED` (immediately revoked if trust drops to `SUSPECT`/`NONE` or on quit). |
+
+When **LuckPerms** is installed on Paper, Folia, Velocity, or Fabric, Haikyo also registers dynamic contexts (`haikyo-client`, `haikyo-attested`, `haikyo-trust`, `haikyo-channel`). See [docs/api.md](api.md) for usage examples.

@@ -21,7 +21,8 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Public service API exposed by the Haikyo server plugin for third-party plugins and server mods.
+ * Public service API exposed by the Haikyo server plugin for third-party plugins, anticheats,
+ * and server mods. Obtainable via Bukkit's {@code ServicesManager} or {@link HaikyoApiProvider#get()}.
  */
 public interface HaikyoApi {
 
@@ -59,9 +60,19 @@ public interface HaikyoApi {
     boolean isHaikyoClient(UUID playerId);
 
     /**
+     * Returns whether the player currently holds {@link TrustLevel#ATTESTED}.
+     */
+    boolean isAttested(UUID playerId);
+
+    /**
      * Returns an immutable snapshot of the player's Haikyo session, if online.
      */
     Optional<PlayerSession> getPlayerSession(UUID playerId);
+
+    /**
+     * Returns the most recent verified {@link IntegritySnapshot} received for the player, if any.
+     */
+    Optional<IntegritySnapshot> getLastIntegritySnapshot(UUID playerId);
 
     /**
      * Registers a listener for {@link TrustChangeEvent} notifications.
@@ -84,9 +95,50 @@ public interface HaikyoApi {
     void removeModSignalListener(ModSignalListener listener);
 
     /**
+     * Registers a listener invoked whenever a verified {@code integrity_report} arrives.
+     */
+    void registerIntegrityListener(IntegrityReportListener listener);
+
+    /**
+     * Unregisters an {@link IntegrityReportListener}.
+     */
+    void unregisterIntegrityListener(IntegrityReportListener listener);
+
+    /**
      * Marks an online player as {@link TrustLevel#SUSPECT} with an explanatory reason.
      *
      * @return {@code true} if the player session existed and was marked suspect
      */
     boolean markSuspect(UUID playerId, String reason);
+
+    /**
+     * Records a custom signal emitted by a third-party plugin and transitions the player to {@link TrustLevel#SUSPECT}.
+     *
+     * @param playerId     target online player UUID
+     * @param sourcePlugin name/identifier of the calling plugin (e.g. {@code "MyAnticheat"})
+     * @param signalName   concise signal identifier (e.g. {@code "invalid_reach_sample"})
+     */
+    void addExternalSignal(UUID playerId, String sourcePlugin, String signalName);
+
+    /**
+     * Marks a player as {@link TrustLevel#SUSPECT} and promotes them into {@code requires-haikyo.json}
+     * (including signed {@code haikyo:link} {@code 0x03} sync to Velocity when enabled).
+     *
+     * @param playerId     target player UUID
+     * @param sourcePlugin name/identifier of the calling plugin
+     * @param reason       human-readable reason recorded in {@code requires-haikyo.json}
+     */
+    void flagSuspect(UUID playerId, String sourcePlugin, String reason);
+
+    /**
+     * Evaluates whether a third-party anticheat check should be relaxed/cancelled for the player,
+     * honoring the configured check table ({@code always} vs {@code relaxed}), trust level,
+     * unrelaxed sampling fraction, and {@code haikyo:ac} input corroboration.
+     *
+     * @param playerId      target player UUID
+     * @param anticheatName anticheat table name in {@code config.yml} (e.g. {@code "grim"}, {@code "vulcan"}, {@code "generic"}, or custom)
+     * @param checkName     check identifier (e.g. {@code "Simulation"}, {@code "AimA"}, {@code "Reach"})
+     * @return {@code true} if the flag may safely be relaxed/cancelled
+     */
+    boolean shouldRelaxCheck(UUID playerId, String anticheatName, String checkName);
 }
