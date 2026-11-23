@@ -36,6 +36,19 @@ fn read_lp_str(buf: &[u8], offset: &mut usize) -> Result<String, String> {
     Ok(s)
 }
 
+pub fn write_lp_str<W: std::io::Write>(writer: &mut W, s: &str) -> Result<(), std::io::Error> {
+    let bytes = s.as_bytes();
+    if bytes.len() > u16::MAX as usize {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "lp_str length exceeds u16::MAX",
+        ));
+    }
+    writer.write_all(&(bytes.len() as u16).to_be_bytes())?;
+    writer.write_all(bytes)?;
+    Ok(())
+}
+
 pub fn normalize_server_address(addr: &str) -> String {
     let trimmed = addr.trim_end_matches('.');
     let mut parts = trimmed.split(':');

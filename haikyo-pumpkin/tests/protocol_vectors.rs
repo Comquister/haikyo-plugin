@@ -162,3 +162,50 @@ fn test_framing_and_reassembly() {
         }
     }
 }
+
+#[test]
+fn test_link_require_sync_roundtrip() {
+    use haikyo_pumpkin::link::{
+        RequireSync, encode_signed_require_sync, verify_and_decode_require_sync,
+    };
+
+    let secret = "super-secret-cluster-token-123456";
+    let player_uuid = Uuid::new_v4();
+    let now = 1700000000i64;
+
+    let sync = RequireSync {
+        require: true,
+        player_uuid,
+        player_name: "TestHaikyoPlayer".into(),
+        reason: "killaura_flagged".into(),
+        issued_at: now,
+    };
+
+    let encoded = encode_signed_require_sync(&sync, secret).expect("Encoding succeeds");
+
+    // 1. Valid decode within freshness window
+    let decoded = verify_and_decode_require_sync(&encoded, secret, now + 10)
+        .expect("Decodes successfully within 10s");
+    assert_eq!(decoded, sync);
+
+    // 2. Reject invalid HMAC (wrong secret)
+    let bad_secret_res = verify_and_decode_require_sync(&encoded, "wrong-secret", now + 10);
+    assert!(bad_secret_res.is_err());
+
+    // 3. Reject expired timestamp (> 60s skew)
+    let expired_res = verify_and_decode_require_sync(&encoded, secret, now + 120);
+    assert!(expired_res.is_err());
+
+    // 4. Test pardon roundtrip
+    let pardon_sync = RequireSync {
+        require: false,
+        player_uuid,
+        player_name: "TestHaikyoPlayer".into(),
+        reason: "pardon_admin".into(),
+        issued_at: now,
+    };
+    let pardon_encoded = encode_signed_require_sync(&pardon_sync, secret).expect("Pardon encodes");
+    let pardon_decoded = verify_and_decode_require_sync(&pardon_encoded, secret, now)
+        .expect("Pardon decodes");
+    assert_eq!(pardon_decoded, pardon_sync);
+}

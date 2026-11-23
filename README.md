@@ -38,13 +38,34 @@ Plugin e mod oficial do servidor para integração com o **Haikyo Client** em **
 
 | Module | Platform | Description |
 |---|---|---|
-| `haikyo-api` | All | Public Java API for third-party plugins & server mods (`HaikyoApi`, `TrustLevel`, `PlayerSession`, listeners). |
-| `haikyo-core` | All | Pure-Java core (wire framing & fragmentation, Ed25519 attestation & `HKRL` rules verifier, `haikyo:link` HMAC codec, `mods.rules`, `TrustManager`, `AuditLogger`, `ScreenshotDeliveryService`, `VoiceModerationManager`, localization, `requires-haikyo.json`). Zero platform imports. |
-| `haikyo-paper` | Paper & Folia 26.3+ | Self-contained Paper/Folia plugin JAR (`folia-supported: true`), `/haikyo` commands, GrimAC / Vulcan / Generic adapters, Simple Voice Chat Mode A adapter, and `waypoints` example mod. |
+| `haikyo-api` | All (Java) | Public Java API for third-party plugins & server mods (`HaikyoApi`, `TrustLevel`, `PlayerSession`, listeners). |
+| `haikyo-core` | All (Java) | Pure-Java core (wire framing & fragmentation, Ed25519 attestation & `HKRL` rules verifier, `haikyo:link` HMAC codec, `mods.rules`, `TrustManager`, `AuditLogger`, `ScreenshotDeliveryService`, `VoiceModerationManager`, localization, `requires-haikyo.json`). Zero platform imports. |
+| `haikyo-paper` | Paper & Folia 26.3+ | Self-contained Paper/Folia plugin JAR (`folia-supported: true`), strict Folia region/entity scheduler compatibility, full `/haikyo` commands, GrimAC / Vulcan / Generic anticheat adapters, Simple Voice Chat Mode A adapter, and `waypoints` sync. |
 | `haikyo-velocity` | Velocity 4.3.1+ | Self-contained Velocity proxy plugin JAR implementing the `proxy` role and `haikyo:link` session forwarding. |
 | `haikyo-fabric` | Fabric 26.3 | Self-contained Fabric server mod JAR reusing `haikyo-core`, Brigadier `/haikyo` commands, `waypoints`, `haikyo:admin`, and Simple Voice Chat Mode A entrypoint. |
-| `haikyo-pumpkin` | PumpkinMC (Rust Native) | High-performance native Rust cdylib plugin for PumpkinMC servers (Minecraft 26.3). Wire framing, Ed25519 offline verification, `/haikyo` commands. |
+| `haikyo-pumpkin` | PumpkinMC (Rust Native) | High-performance native Rust cdylib plugin for PumpkinMC servers (Minecraft 26.3). Wire framing, Ed25519 offline verification, `/haikyo` commands, and `haikyo:link` (`HKRQ`) suspect synchronization with Velocity. |
 | `haikyo-pumpkin-wasm` | PumpkinMC (Wasm Component) | Universal WebAssembly Component plugin targeting `pumpkin-plugin-api` (Wasm/WIT). Sandboxed execution across operating systems. |
+
+## Platform Feature Matrix
+
+Comparison of features across server implementations:
+
+| Feature / Subsystem | Paper & Folia (`haikyo-paper`) | Fabric (`haikyo-fabric`) | Velocity (`haikyo-velocity`) | PumpkinMC (`haikyo-pumpkin`) |
+|---|:---:|:---:|:---:|:---:|
+| **Language & Runtime** | Java 25 | Java 25 | Java 25 | Rust (Native cdylib / Wasm) |
+| **Folia Compatibility** | ✅ Full (`folia-supported: true`) | N/A | N/A | N/A (Rust multithreaded) |
+| **Wire Framing & Defrag** | ✅ Yes (64 frags, SHA-256) | ✅ Yes | ✅ Yes | ✅ Yes |
+| **Ed25519 Client Attestation** | ✅ Yes (`HKAT` v1) | ✅ Yes | ✅ Yes (at edge) | ✅ Yes |
+| **Dynamic Mod Control (`mods.rules`)** | ✅ Yes | ✅ Yes | N/A (transparent) | ✅ Yes (basic allowed rules) |
+| **Anticheat Trust Engine** | ✅ Full (GrimAC, Vulcan, Generic) | ⚠️ Generic only | N/A | ⚠️ Generic / Command only |
+| **Admin Commands** | ✅ `info`, `hwid`, `screenshot`, `suspect`, `pardon` | ✅ Full | ✅ `reload`, `info`, `find` | ✅ `info`, `suspect`, `pardon` |
+| **Screenshot Delivery** | ✅ Embedded HTTP Server (60s token) | ⚠️ File save | N/A | ⚠️ Console / Audit log |
+| **Proxy Link (`haikyo:link`)** | ✅ Receives `HKLK`, sends `HKRQ` | ✅ Receives `HKLK`, sends `HKRQ` | ✅ Issues `HKLK`, receives `HKRQ` | ⚠️ Sends `HKRQ` (Suspect sync); `HKLK` intake planned |
+| **Periodic Integrity Sweeps** | ✅ 30s async task | ✅ 30s server tick task | ✅ Periodic sweep | ⚠️ Handshake/attest only |
+| **Voice Chat (`haikyo:voice`)** | ✅ Simple Voice Chat Mode A | ✅ Simple Voice Chat Mode A | N/A | ❌ Planned |
+| **LuckPerms Contexts** | ✅ Yes (`haikyo:attested`) | ✅ Yes | ✅ Yes | ❌ Not available on Pumpkin |
+| **Official Waypoints Mod** | ✅ Yes (`haikyo:mod/waypoints`) | ✅ Yes | N/A | ❌ Planned |
+
 
 ## Requirements
 

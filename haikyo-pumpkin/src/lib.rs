@@ -3,6 +3,7 @@ pub mod commands;
 pub mod config;
 pub mod crypto;
 pub mod framing;
+pub mod link;
 pub mod messages;
 pub mod session;
 
@@ -29,6 +30,7 @@ use crate::audit::AuditLogger;
 use crate::config::HaikyoConfig;
 use crate::crypto::{KeyStore, parse_attestation_token};
 use crate::framing::{DecodeResult, encode_unfragmented};
+use crate::link::{RequireSync, encode_signed_require_sync};
 use crate::messages::{
     C2SAdminHwidResponse, C2SAdminScreenshotResponse, C2SHelloAck, S2CAdminScreenshotRequest,
     S2CAttestChallenge, S2CAttestResult, S2CHello, S2CModsRules,
@@ -40,7 +42,9 @@ pub const CHANNEL_ATTEST: &str = "haikyo:attest";
 pub const CHANNEL_MODS: &str = "haikyo:mods";
 pub const CHANNEL_AC: &str = "haikyo:ac";
 pub const CHANNEL_ADMIN: &str = "haikyo:admin";
-async fn send_payload_to_player(player: &Player, channel: &str, data: &[u8]) {
+pub const CHANNEL_LINK: &str = "haikyo:link";
+
+pub async fn send_payload_to_player(player: &Player, channel: &str, data: &[u8]) {
     if let Some(java) = player.as_java() {
         java.send_custom_payload(channel, data).await;
     }

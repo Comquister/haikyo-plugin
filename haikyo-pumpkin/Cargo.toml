@@ -24,6 +24,7 @@ base64 = "0.22"
 bytes = "1.10"
 tracing = "0.1"
 uuid = { version = "1.15", features = ["v4", "serde"] }
+hmac = "0.12.1"
 
 [dev-dependencies]
 serde_json = "1.0"

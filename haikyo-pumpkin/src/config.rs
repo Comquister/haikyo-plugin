@@ -19,6 +19,20 @@ pub struct HaikyoConfig {
     pub kick_message: String,
     #[serde(default = "default_public_keys")]
     pub public_keys: HashMap<String, String>,
+
+    // Link (Proxy <-> Backend)
+    #[serde(default = "default_link_shared_secret")]
+    pub link_shared_secret: String,
+    #[serde(default = "default_publish_requires_to_proxy")]
+    pub publish_requires_to_proxy: bool,
+}
+
+fn default_link_shared_secret() -> String {
+    "".into()
+}
+
+fn default_publish_requires_to_proxy() -> bool {
+    true
 }
 
 fn default_server_role() -> String {
@@ -61,6 +75,8 @@ impl Default for HaikyoConfig {
             challenge_timeout_secs: default_challenge_timeout_secs(),
             kick_message: default_kick_message(),
             public_keys: default_public_keys(),
+            link_shared_secret: default_link_shared_secret(),
+            publish_requires_to_proxy: default_publish_requires_to_proxy(),
         }
     }
 }
