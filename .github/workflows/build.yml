@@ -7,7 +7,8 @@ on:
     branches: [ main ]
 
 jobs:
-  build:
+  build-java:
+    name: Build Java Plugins & Mods
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -35,3 +36,63 @@ jobs:
             haikyo-fabric/build/libs/haikyo-fabric-*.jar
             haikyo-api/build/libs/haikyo-api-*.jar
             !**/build/libs/*-sources.jar
+
+  build-pumpkin-native:
+    name: Build Pumpkin Native (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact: libhaikyo_pumpkin.so
+          - os: windows-latest
+            artifact: haikyo_pumpkin.dll
+          - os: macos-latest
+            artifact: libhaikyo_pumpkin.dylib
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Clone PumpkinMC Upstream
+        run: git clone --depth 1 https://github.com/Pumpkin-MC/Pumpkin.git ../pumpkin
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Test haikyo-pumpkin
+        run: cargo test
+        working-directory: haikyo-pumpkin
+
+      - name: Build Release haikyo-pumpkin
+        run: cargo build --release
+        working-directory: haikyo-pumpkin
+
+      - name: Upload Native Plugin Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: haikyo-pumpkin-${{ matrix.os }}
+          path: haikyo-pumpkin/target/release/${{ matrix.artifact }}
+
+  build-pumpkin-wasm:
+    name: Build Pumpkin Wasm Component
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Clone PumpkinMC Upstream
+        run: git clone --depth 1 https://github.com/Pumpkin-MC/Pumpkin.git ../pumpkin
+
+      - name: Install Rust toolchain & wasm target
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-wasip1
+
+      - name: Install cargo-component
+        run: cargo install cargo-component --locked
+
+      - name: Check Wasm Plugin
+        run: cargo component check
+        working-directory: haikyo-pumpkin-wasm
+
