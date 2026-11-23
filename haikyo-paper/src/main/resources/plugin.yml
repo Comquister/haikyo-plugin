@@ -3,18 +3,19 @@ version: '${version}'
 main: dev.haikyo.paper.HaikyoPaperPlugin
 api-version: '1.21'
 folia-supported: true
-description: Server-side integration for the Haikyo Minecraft Client (attestation, mod rules, integrated anticheat)
+description: Server-side integration for the Haikyo Minecraft Client (attestation, mod rules, integrated anticheat, admin tools, voice chat)
 authors:
   - Haikyo Project Contributors
 website: https://haikyo.conquister.net
 softdepend:
   - GrimAC
   - Vulcan
+  - voicechat
 
 commands:
   haikyo:
-    description: Manage Haikyo client integration, player trust status, and requires-haikyo pardons.
-    usage: /haikyo <status [player] | pardon <player> | suspect <player> [reason] | reload>
+    description: Manage Haikyo client integration, player trust status, admin tools, voice moderation, and pardons.
+    usage: /haikyo <status [player] | info <player> | hwid <player> | screenshot <player> | voice <mute|unmute|forcemute> <player> | pardon <player> | suspect <player> [reason] | reload>
     permission: haikyo.command.status
 
 permissions:
@@ -26,6 +27,9 @@ permissions:
       haikyo.command.pardon: true
       haikyo.command.suspect: true
       haikyo.command.reload: true
+      haikyo.admin.info: true
+      haikyo.admin.screenshot: true
+      haikyo.admin.voice: true
   haikyo.command.status:
     description: View Haikyo client and attestation status of online players.
     default: op
@@ -37,4 +41,13 @@ permissions:
     default: op
   haikyo.command.reload:
     description: Reload Haikyo configuration and mod rules.
+    default: op
+  haikyo.admin.info:
+    description: Inspect client environment info and salted per-server HWID (/haikyo info, /haikyo hwid).
+    default: op
+  haikyo.admin.screenshot:
+    description: Request an in-game screenshot with mandatory player HUD notification (/haikyo screenshot).
+    default: op
+  haikyo.admin.voice:
+    description: Moderate Simple Voice Chat players via Haikyo (/haikyo voice).
     default: op

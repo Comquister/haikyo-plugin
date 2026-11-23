@@ -10,6 +10,7 @@ allprojects {
         mavenCentral()
         maven("https://repo.papermc.io/repository/maven-public/")
         maven("https://repo.grim.ac/snapshots")
+        maven("https://maven.maxhenkel.de/repository/public")
     }
 }
 

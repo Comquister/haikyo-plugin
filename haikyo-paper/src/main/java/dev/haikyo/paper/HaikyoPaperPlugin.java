@@ -19,6 +19,8 @@ package dev.haikyo.paper;
 
 import dev.haikyo.api.HaikyoApi;
 import dev.haikyo.api.HaikyoApiProvider;
+import dev.haikyo.core.admin.AuditLogger;
+import dev.haikyo.core.admin.ScreenshotDeliveryService;
 import dev.haikyo.core.config.HaikyoConfig;
 import dev.haikyo.core.crypto.HaikyoLinkCodec;
 import dev.haikyo.core.i18n.Localization;
@@ -30,6 +32,7 @@ import dev.haikyo.paper.anticheat.GenericAnticheatAdapter;
 import dev.haikyo.paper.anticheat.GrimAdapter;
 import dev.haikyo.paper.anticheat.VulcanAdapter;
 import dev.haikyo.paper.mods.WaypointsMod;
+import dev.haikyo.paper.voice.SvcAdapter;
 import io.papermc.paper.threadedregions.scheduler.ScheduledTask;
 import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
@@ -72,6 +75,8 @@ public final class HaikyoPaperPlugin extends JavaPlugin implements Listener, Plu
     private volatile Localization localization;
     private TrustManager trustManager;
     private WaypointsMod waypointsMod;
+    private AuditLogger auditLogger;
+    private ScreenshotDeliveryService screenshotService;
     private ScheduledTask reportSweepTask;
 
     @Override
@@ -128,7 +133,20 @@ public final class HaikyoPaperPlugin extends JavaPlugin implements Listener, Plu
             haikyoCmd.setTabCompleter(cmd);
         }
 
-        // Anticheat soft-depend adapters
+        // Phase 7: audit.log & temporary screenshot delivery service
+        this.auditLogger = new AuditLogger(
+                getDataFolder().toPath().resolve("audit.log"),
+                cfg.admin().auditRetentionDays(),
+                Clock.systemUTC()
+        );
+        this.screenshotService = new ScreenshotDeliveryService(
+                getDataFolder().toPath().resolve("screens"),
+                cfg.admin().screenshotDelivery(),
+                Clock.systemUTC()
+        );
+        this.screenshotService.reconfigure(cfg.admin().screenshotDelivery());
+
+        // Anticheat & Simple Voice Chat soft-depend adapters
         if (GrimAdapter.tryRegister(this, trustManager, getLogger())) {
             getLogger().info(localization.get("log.anticheat_hooked", "GrimAC"));
         } else {
@@ -139,11 +157,20 @@ public final class HaikyoPaperPlugin extends JavaPlugin implements Listener, Plu
         } else {
             getLogger().info(localization.get("log.anticheat_unavailable", "Vulcan"));
         }
+        if (SvcAdapter.tryRegister(trustManager, getLogger())) {
+            getLogger().info(localization.get("log.voice_hooked"));
+        } else {
+            getLogger().info(localization.get("log.voice_unavailable"));
+        }
 
-        // Folia-safe async periodic sweep for missing integrity reports
+        // Folia-safe async periodic sweep for missing integrity reports, expired screenshots, and audit log retention
         this.reportSweepTask = Bukkit.getAsyncScheduler().runAtFixedRate(
                 this,
-                task -> trustManager.checkReportTimeouts(),
+                task -> {
+                    trustManager.checkReportTimeouts();
+                    screenshotService.purgeExpired();
+                    auditLogger.pruneExpired();
+                },
                 10L,
                 10L,
                 TimeUnit.SECONDS
@@ -165,6 +192,9 @@ public final class HaikyoPaperPlugin extends JavaPlugin implements Listener, Plu
         if (reportSweepTask != null) {
             reportSweepTask.cancel();
             reportSweepTask = null;
+        }
+        if (screenshotService != null) {
+            screenshotService.close();
         }
         if (waypointsMod != null) {
             waypointsMod.disable();
@@ -188,22 +218,33 @@ public final class HaikyoPaperPlugin extends JavaPlugin implements Listener, Plu
         return waypointsMod;
     }
 
+    public AuditLogger auditLogger() {
+        return auditLogger;
+    }
+
+    public ScreenshotDeliveryService screenshotService() {
+        return screenshotService;
+    }
+
     public void reloadPluginConfig() {
         ensureDefaultConfigOnDisk();
         HaikyoConfig cfg = loadConfigFromDisk();
         this.localization = Localization.loadDefault(cfg.language(), getDataFolder().toPath().resolve("lang"));
         TrustManager.ServerRole role = resolveEffectiveRole(cfg);
         trustManager.reloadConfig(cfg, role);
+        auditLogger.setRetentionDays(cfg.admin().auditRetentionDays());
+        screenshotService.reconfigure(cfg.admin().screenshotDelivery());
         if (cfg.waypointsEnabled()) {
             waypointsMod.enable(cfg.waypointMarkers());
         } else {
             waypointsMod.disable();
         }
-        // Push refreshed mod rules to all online Haikyo clients on their own Folia entity schedulers
+        // Push refreshed mod rules & voice configs to all online Haikyo clients on their own Folia entity schedulers
         for (Player p : Bukkit.getOnlinePlayers()) {
             if (trustManager.isHaikyoClient(p.getUniqueId())) {
                 p.getScheduler().run(this, t -> {
                     trustManager.sendModRules(p.getUniqueId());
+                    trustManager.sendVoiceConfig(p.getUniqueId());
                     if (waypointsMod.isRegistered()) {
                         waypointsMod.sendSync(p.getUniqueId());
                     }
