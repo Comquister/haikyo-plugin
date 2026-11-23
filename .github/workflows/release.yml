@@ -24,18 +24,34 @@ jobs:
         uses: gradle/actions/setup-gradle@v6
 
       - name: Build and run tests
-        run: ./gradlew build --stacktrace
+        shell: bash
+        run: |
+          TAG_VER="${GITHUB_REF_NAME#v}"
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            ./gradlew clean build -PhaikyoVersion="$TAG_VER" --stacktrace
+          else
+            ./gradlew clean build --stacktrace
+          fi
+
+      - name: Stage Java JARs (flat directory for GitHub Release)
+        shell: bash
+        run: |
+          mkdir -p dist
+          for mod in haikyo-paper haikyo-velocity haikyo-fabric haikyo-api; do
+            for jar in "$mod"/build/libs/"$mod"-*.jar; do
+              case "$jar" in
+                *-sources.jar) continue ;;
+                *) cp "$jar" dist/ ;;
+              esac
+            done
+          done
+          ls -la dist
 
       - name: Upload Java JARs
         uses: actions/upload-artifact@v7
         with:
           name: java-jars
-          path: |
-            haikyo-paper/build/libs/haikyo-paper-*.jar
-            haikyo-velocity/build/libs/haikyo-velocity-*.jar
-            haikyo-fabric/build/libs/haikyo-fabric-*.jar
-            haikyo-api/build/libs/haikyo-api-*.jar
-            !**/build/libs/*-sources.jar
+          path: dist/*.jar
 
   build-pumpkin-native:
     name: Build Pumpkin Native (${{ matrix.label }})
@@ -177,12 +193,20 @@ jobs:
           path: release-assets
           merge-multiple: true
 
-      - name: List Release Files
-        run: ls -la release-assets
+      - name: Verify and list Release Files + SHA256SUMS
+        shell: bash
+        run: |
+          ls -la release-assets
+          for req in haikyo-paper haikyo-velocity haikyo-fabric haikyo-api; do
+            ls release-assets/"${req}"-*.jar >/dev/null
+          done
+          (cd release-assets && sha256sum * > SHA256SUMS.txt)
+          cat release-assets/SHA256SUMS.txt
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
         with:
           files: |
             release-assets/*
+          fail_on_unmatched_files: true
           generate_release_notes: true
