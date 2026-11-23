@@ -1,6 +1,6 @@
 # Haikyo Plugin
 
-[![License: GPL v3+](https://img.shields.io/badge/License-GPLv3%2B-blue.svg)](LICENSE)
+[![License: AGPL v3+](https://img.shields.io/badge/License-AGPLv3%2B-blue.svg)](LICENSE)
 
 Official server-side plugin for integrating Minecraft servers (**Paper**, **Folia**, and **Velocity**) with the **Haikyo Client**.
 
@@ -24,7 +24,7 @@ Plugin oficial do servidor para integração com o **Haikyo Client** em **Paper*
 - **Controle dinâmico de mods (`mods.rules`)**: `allow`, `limit` (com parâmetros declarados por cada mod) e `block`, conferido pelo relatório assinado do cliente.
 - **Anticheat integrado**: níveis de confiança (`NONE`, `ATTESTED`, `SUSPECT`), tabela de checks `always` vs `relaxed`, amostragem aleatória de 5% sem relaxamento e adaptadores para **GrimAC**, **Vulcan** e modo **Genérico**.
 - **Paper + Folia no mesmo JAR** (sem uso de `Bukkit.getScheduler()`) e **Velocity** com transferência de sessão assinada via HMAC-SHA256 (`haikyo:link`).
-- **Licença GPL-3.0-or-later** (copyleft forte, no mesmo espírito do Linux e do GrimAC).
+- **Licença AGPL-3.0-or-later** (copyleft forte, no mesmo espírito do Linux e do GrimAC).
 
 ---
 
@@ -80,4 +80,4 @@ HaikyoApiProvider.get().ifPresent(api -> {
 
 ## License
 
-This project is licensed under the **GNU General Public License v3.0 or later (GPL-3.0-or-later)** — see [LICENSE](LICENSE) for the full text.
+This project is licensed under the **GNU Affero General Public License v3.0 or later (AGPL-3.0-or-later)** — see [LICENSE](LICENSE) for the full text.
