@@ -80,9 +80,40 @@ jobs:
           name: pumpkin-native-${{ matrix.os }}
           path: ${{ matrix.output_name }}
 
+  build-pumpkin-wasm:
+    name: Build Pumpkin Wasm Component
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Clone PumpkinMC Upstream
+        run: git clone --depth 1 https://github.com/Pumpkin-MC/Pumpkin.git ../pumpkin
+
+      - name: Install Rust toolchain & wasm target
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-wasip1
+
+      - name: Install cargo-component
+        run: cargo install cargo-component --locked
+
+      - name: Build Wasm Component
+        run: cargo component build --release
+        working-directory: haikyo-pumpkin-wasm
+
+      - name: Copy artifact
+        run: cp haikyo-pumpkin-wasm/target/wasm32-wasip1/release/haikyo_pumpkin_wasm.wasm ./haikyo-pumpkin.wasm
+
+      - name: Upload Wasm Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pumpkin-wasm
+          path: haikyo-pumpkin.wasm
+
   publish-release:
     name: Publish GitHub Release
-    needs: [build-java, build-pumpkin-native]
+    needs: [build-java, build-pumpkin-native, build-pumpkin-wasm]
     runs-on: ubuntu-latest
     permissions:
       contents: write
