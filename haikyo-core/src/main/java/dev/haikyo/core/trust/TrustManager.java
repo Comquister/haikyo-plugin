@@ -39,13 +39,16 @@ import dev.haikyo.core.protocol.WireFrame;
 import dev.haikyo.core.store.RequiresHaikyoStore;
 import dev.haikyo.core.util.Hex;
 import dev.haikyo.core.util.Java8Compat;
+import dev.haikyo.core.util.JsonCodec;
 import dev.haikyo.core.voice.VoiceModerationManager;
 
+import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -513,6 +516,29 @@ public final class TrustManager implements HaikyoApi {
     public void onPlayerQuit(UUID playerId) {
         sessions.remove(playerId);
         voiceModerationManager.clearPlayer(playerId);
+    }
+
+    /**
+     * Prefix used for embedding Haikyo server capabilities inside the Server List Ping MOTD
+     * component's {@code insertion} attribute (invisible to vanilla clients, parsed by Haikyo).
+     */
+    public static final String PING_INSERTION_PREFIX = "haikyo:v1:";
+
+    /**
+     * Encodes the server's Haikyo metadata ({@code server_id}, {@code require_haikyo},
+     * {@code scopes}) as a {@code haikyo:v1:<base64url>} string suitable for Server List Ping.
+     */
+    public String encodePingInsertion() {
+        HaikyoConfig cfg = this.config;
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("v", HaikyoChannels.PROTOCOL_VERSION);
+        payload.put("server_id", cfg.serverId());
+        payload.put("require_haikyo", cfg.requireHaikyo());
+        payload.put("scopes", new ArrayList<>(cfg.consentScopes()));
+        String json = JsonCodec.stringify(payload);
+        String b64 = Base64.getUrlEncoder().withoutPadding()
+                .encodeToString(json.getBytes(StandardCharsets.UTF_8));
+        return PING_INSERTION_PREFIX + b64;
     }
 
     /**

@@ -21,6 +21,7 @@ import dev.haikyo.core.i18n.Localization;
 import org.bukkit.Bukkit;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
+import org.bukkit.event.server.ServerListPingEvent;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.PluginDescriptionFile;
 
@@ -35,7 +36,13 @@ import java.util.Locale;
  */
 public final class PlatformCompat {
     private static final Class<?> COMPONENT_CLASS = findClass("net.kyori.adventure.text.Component");
+    private static final Class<?> COMPONENT_LIKE_CLASS = findClass("net.kyori.adventure.text.ComponentLike");
     private static final Method COMPONENT_TEXT = findMethod(COMPONENT_CLASS, "text", String.class);
+    private static final Method COMPONENT_EMPTY = findMethod(COMPONENT_CLASS, "empty");
+    private static final Method COMPONENT_INSERTION = findMethod(COMPONENT_CLASS, "insertion", String.class);
+    private static final Method COMPONENT_APPEND = findMethod(COMPONENT_CLASS, "append", COMPONENT_LIKE_CLASS);
+    private static final Method PING_GET_MOTD = findMethod(ServerListPingEvent.class, "motd");
+    private static final Method PING_SET_MOTD = findMethod(ServerListPingEvent.class, "motd", COMPONENT_CLASS);
     private static final Method SENDER_SEND_COMPONENT = findMethod(CommandSender.class, "sendMessage", COMPONENT_CLASS);
     private static final Method PLAYER_KICK_COMPONENT = findMethod(Player.class, "kick", COMPONENT_CLASS);
 
@@ -74,6 +81,32 @@ public final class PlatformCompat {
             }
         }
         sender.sendMessage(message);
+    }
+
+    /**
+     * Appends an invisible Adventure {@code Component.empty().insertion(insertion)} child to
+     * Paper's {@link ServerListPingEvent#motd()} when running on Paper/Purpur/Folia 1.16.5+.
+     * Vanilla clients ignore {@code insertion} on MOTDs and render zero characters; Haikyo
+     * clients parse it during the initial Server List Ping.
+     */
+    public static void appendPingInsertion(ServerListPingEvent event, String insertion) {
+        if (event == null || insertion == null || insertion.isEmpty()) {
+            return;
+        }
+        if (PING_GET_MOTD == null || PING_SET_MOTD == null
+                || COMPONENT_EMPTY == null || COMPONENT_INSERTION == null || COMPONENT_APPEND == null) {
+            return;
+        }
+        try {
+            Object current = PING_GET_MOTD.invoke(event);
+            if (current == null) {
+                current = COMPONENT_EMPTY.invoke(null);
+            }
+            Object marker = COMPONENT_INSERTION.invoke(COMPONENT_EMPTY.invoke(null), insertion);
+            Object updated = COMPONENT_APPEND.invoke(current, marker);
+            PING_SET_MOTD.invoke(event, updated);
+        } catch (Throwable ignored) {
+        }
     }
 
     /**

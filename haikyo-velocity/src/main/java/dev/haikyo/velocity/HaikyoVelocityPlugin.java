@@ -25,7 +25,9 @@ import com.velocitypowered.api.event.connection.PluginMessageEvent;
 import com.velocitypowered.api.event.connection.PostLoginEvent;
 import com.velocitypowered.api.event.player.ServerPostConnectEvent;
 import com.velocitypowered.api.event.proxy.ProxyInitializeEvent;
+import com.velocitypowered.api.event.proxy.ProxyPingEvent;
 import com.velocitypowered.api.event.proxy.ProxyShutdownEvent;
+import com.velocitypowered.api.proxy.server.ServerPing;
 import com.velocitypowered.api.plugin.Dependency;
 import com.velocitypowered.api.plugin.Plugin;
 import com.velocitypowered.api.plugin.annotation.DataDirectory;
@@ -171,6 +173,20 @@ public final class HaikyoVelocityPlugin {
         if (trustManager != null) {
             HaikyoApiProvider.unregister(trustManager);
         }
+    }
+
+    @Subscribe
+    public void onProxyPing(ProxyPingEvent event) {
+        if (trustManager == null) {
+            return;
+        }
+        ServerPing ping = event.getPing();
+        Component current = ping.getDescriptionComponent();
+        if (current == null) {
+            current = Component.empty();
+        }
+        Component marker = Component.empty().insertion(trustManager.encodePingInsertion());
+        event.setPing(ping.asBuilder().description(current.append(marker)).build());
     }
 
     @Subscribe

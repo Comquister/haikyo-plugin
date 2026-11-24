@@ -47,6 +47,7 @@ import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.event.server.ServerListPingEvent;
 import org.bukkit.plugin.ServicePriority;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.plugin.messaging.Messenger;
@@ -293,6 +294,13 @@ public final class HaikyoPaperPlugin extends JavaPlugin implements Listener, Plu
     // -------------------------------------------------------------------------
     // Player & Plugin Messaging events
     // -------------------------------------------------------------------------
+
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onServerListPing(ServerListPingEvent event) {
+        if (trustManager != null) {
+            PlatformCompat.appendPingInsertion(event, trustManager.encodePingInsertion());
+        }
+    }
 
     @EventHandler(priority = EventPriority.MONITOR)
     public void onPlayerJoin(PlayerJoinEvent event) {
