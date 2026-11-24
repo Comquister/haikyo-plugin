@@ -17,8 +17,11 @@ pub struct S2CHello {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct C2SHelloAck {
     pub protocol_version: u16,
+    #[serde(default)]
     pub client_version: String,
+    #[serde(default)]
     pub channel: String,
+    #[serde(default)]
     pub channels: HashMap<String, u16>,
     #[serde(default)]
     pub mod_channels: Vec<String>,
@@ -30,13 +33,24 @@ pub struct C2SHelloAck {
 pub struct S2CAttestChallenge {
     pub nonce: String, // hex 32 bytes
     pub server_address: String,
+    pub session_key: String, // hex 32 bytes
+    pub report_interval_min_s: u32,
+    pub report_interval_max_s: u32,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct C2SAttestResponse {
+    #[serde(default)]
+    pub token: Option<String>,
+    #[serde(default)]
+    pub error: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct S2CAttestResult {
-    pub success: bool,
+    pub accepted: bool,
     pub trust_level: String,
-    pub message: Option<String>,
+    pub reason: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

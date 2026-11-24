@@ -66,8 +66,16 @@ impl CommandHandler for HaikyoInfoExecutor {
                 .values()
                 .find(|sess| sess.username.to_lowercase() == target_lower)
             {
-                let version = sess.client_version.as_deref().unwrap_or("-");
-                let channel = sess.channel.as_deref().unwrap_or("-");
+                let version = sess
+                    .client_version
+                    .as_deref()
+                    .filter(|v| !v.is_empty())
+                    .unwrap_or("-");
+                let channel = sess
+                    .channel
+                    .as_deref()
+                    .filter(|c| !c.is_empty())
+                    .unwrap_or("-");
                 let msg = format!(
                     "§6[Haikyo]§r §e{}§r | Haikyo: {} | Trust: {:?} | Versão: {} ({}) | Obrigatório: {}",
                     sess.username,

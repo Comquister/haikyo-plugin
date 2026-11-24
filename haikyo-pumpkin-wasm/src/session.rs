@@ -12,6 +12,16 @@ pub enum TrustLevel {
     Suspect,
 }
 
+impl TrustLevel {
+    pub fn wire_name(&self) -> &'static str {
+        match self {
+            TrustLevel::None => "none",
+            TrustLevel::Attested => "attested",
+            TrustLevel::Suspect => "suspect",
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct PlayerSession {
     pub uuid: Uuid,
@@ -23,20 +33,25 @@ pub struct PlayerSession {
     pub channel: Option<String>,
     pub consented_scopes: HashSet<String>,
     pub nonce: [u8; 32],
+    pub session_key: [u8; 32],
+    pub challenge_sent: bool,
     pub challenge_sent_at: u64,
     pub attest_token: Option<AttestationToken>,
     pub hwid: Option<String>,
     pub reassembler: Reassembler,
 }
 
+fn random_32_bytes() -> [u8; 32] {
+    let mut out = [0u8; 32];
+    let a = Uuid::new_v4();
+    let b = Uuid::new_v4();
+    out[0..16].copy_from_slice(a.as_bytes());
+    out[16..32].copy_from_slice(b.as_bytes());
+    out
+}
+
 impl PlayerSession {
     pub fn new(uuid: Uuid, username: String, address: String, now_unix: u64) -> Self {
-        let mut nonce = [0u8; 32];
-        let rand_bytes = Uuid::new_v4();
-        let rand_bytes2 = Uuid::new_v4();
-        nonce[0..16].copy_from_slice(rand_bytes.as_bytes());
-        nonce[16..32].copy_from_slice(rand_bytes2.as_bytes());
-
         Self {
             uuid,
             username,
@@ -46,7 +61,9 @@ impl PlayerSession {
             client_version: None,
             channel: None,
             consented_scopes: HashSet::new(),
-            nonce,
+            nonce: random_32_bytes(),
+            session_key: random_32_bytes(),
+            challenge_sent: false,
             challenge_sent_at: now_unix,
             attest_token: None,
             hwid: None,

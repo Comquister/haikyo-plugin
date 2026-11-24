@@ -183,23 +183,26 @@ impl KeyStore {
             return Err("Attestation nonce mismatch".into());
         }
 
-        let normalized_expected = normalize_server_address(expected_server_address);
-        let normalized_token = normalize_server_address(&token.server_address);
-        if normalized_token != normalized_expected {
-            return Err(format!(
-                "Server address mismatch: token has '{}', server expected '{}'",
-                normalized_token, normalized_expected
-            ));
+        if !expected_server_address.trim().is_empty() {
+            let normalized_expected = normalize_server_address(expected_server_address);
+            let normalized_token = normalize_server_address(&token.server_address);
+            if normalized_token != normalized_expected {
+                return Err(format!(
+                    "Server address mismatch: token has '{}', server expected '{}'",
+                    normalized_token, normalized_expected
+                ));
+            }
         }
 
-        if now_unix < token.issued_at {
+        const CLOCK_SKEW_SECS: u64 = 30;
+        if token.issued_at > now_unix.saturating_add(CLOCK_SKEW_SECS) {
             return Err(format!(
                 "Token issued in the future: issued_at={}, now={}",
                 token.issued_at, now_unix
             ));
         }
 
-        if now_unix > token.expires_at {
+        if now_unix > token.expires_at.saturating_add(CLOCK_SKEW_SECS) {
             return Err(format!(
                 "Token expired: expires_at={}, now={}",
                 token.expires_at, now_unix

@@ -30,7 +30,7 @@ fn default_server_id() -> String {
 }
 
 fn default_server_address() -> String {
-    "play.haikyo.test:25565".into()
+    String::new()
 }
 
 fn default_require_haikyo() -> bool {
