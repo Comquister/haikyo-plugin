@@ -53,79 +53,6 @@ jobs:
           name: java-jars
           path: dist/*.jar
 
-  build-pumpkin-native:
-    name: Build Pumpkin Native (${{ matrix.label }})
-    runs-on: ${{ startsWith(matrix.runner, '[') && fromJSON(matrix.runner) || matrix.runner }}
-    timeout-minutes: 60
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - label: linux
-            runner: '["self-hosted","haikyo-linux"]'
-            artifact: libhaikyo_pumpkin.so
-            output_name: haikyo-pumpkin-linux.so
-            self_hosted: true
-          - label: windows
-            runner: windows-latest
-            artifact: haikyo_pumpkin.dll
-            output_name: haikyo-pumpkin-windows.dll
-            self_hosted: false
-          - label: macos
-            runner: macos-latest
-            artifact: libhaikyo_pumpkin.dylib
-            output_name: haikyo-pumpkin-macos.dylib
-            self_hosted: false
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v7
-
-      - name: Sync PumpkinMC Upstream
-        run: |
-          PUMPKIN_DIR="${{ github.workspace }}/../work/pumpkin-repo"
-          mkdir -p "$(dirname "$PUMPKIN_DIR")"
-          if [ -d "$PUMPKIN_DIR/.git" ]; then
-            git -C "$PUMPKIN_DIR" fetch --depth 1 origin HEAD
-            git -C "$PUMPKIN_DIR" reset --hard FETCH_HEAD
-            git -C "$PUMPKIN_DIR" clean -fd
-          else
-            rm -rf "$PUMPKIN_DIR"
-            git clone --depth 1 https://github.com/Pumpkin-MC/Pumpkin.git "$PUMPKIN_DIR"
-          fi
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Configure persistent Cargo cache on self-hosted runner
-        if: matrix.self_hosted
-        run: |
-          mkdir -p "$HOME/haikyo-plugin-build/pumpkin-native"
-          echo "CARGO_TARGET_DIR=$HOME/haikyo-plugin-build/pumpkin-native" >> "$GITHUB_ENV"
-          echo "CARGO_BUILD_JOBS=4" >> "$GITHUB_ENV"
-
-      - name: Test haikyo-pumpkin
-        run: cargo test
-        working-directory: haikyo-pumpkin
-
-      - name: Build Release haikyo-pumpkin
-        run: cargo build --release
-        working-directory: haikyo-pumpkin
-
-      - name: Stage artifact
-        run: |
-          TARGET_DIR="${CARGO_TARGET_DIR:-haikyo-pumpkin/target}"
-          mkdir -p dist
-          cp "$TARGET_DIR/release/${{ matrix.artifact }}" "dist/${{ matrix.output_name }}"
-
-      - name: Upload Native Artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: pumpkin-native-${{ matrix.label }}
-          path: dist/${{ matrix.output_name }}
-
   build-pumpkin-wasm:
     name: Build Pumpkin Wasm Component
     runs-on: [self-hosted, haikyo-linux]
@@ -178,7 +105,7 @@ jobs:
 
   publish-release:
     name: Publish GitHub Release
-    needs: [build-java, build-pumpkin-native, build-pumpkin-wasm]
+    needs: [build-java, build-pumpkin-wasm]
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: [self-hosted, haikyo-linux]
     permissions:
@@ -200,6 +127,7 @@ jobs:
           for req in haikyo-paper haikyo-velocity haikyo-fabric haikyo-api; do
             ls release-assets/"${req}"-*.jar >/dev/null
           done
+          ls release-assets/haikyo-pumpkin.wasm >/dev/null
           (cd release-assets && sha256sum * > SHA256SUMS.txt)
           cat release-assets/SHA256SUMS.txt
 

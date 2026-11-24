@@ -112,9 +112,14 @@ async fn on_load(&self, context: Arc<Context>) -> Result<(), String> {
     let state_payload = Arc::clone(&self.state);
     let audit_payload = Arc::clone(&self.audit);
 
-    // 0. Registrar comando /haikyo
+    // 0. Registrar permissão e comando /haikyo
+    let _ = context.register_permission(pumpkin_util::permission::Permission::new(
+        "haikyo-pumpkin:haikyo.admin",
+        "Permite usar os comandos administrativos /haikyo",
+        pumpkin_util::permission::PermissionDefault::Op(pumpkin_util::permission::PermissionLvl::Two),
+    ));
     let haikyo_cmd = commands::build_haikyo_command(Arc::clone(&self.state), Arc::clone(&self.audit));
-    context.register_command(haikyo_cmd, "haikyo.admin");
+    context.register_command(haikyo_cmd, "haikyo-pumpkin:haikyo.admin");
 
     // 1. Handler para PlayerJoinEvent
     context.register_event(

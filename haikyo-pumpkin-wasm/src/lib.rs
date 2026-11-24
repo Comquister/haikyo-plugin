@@ -1,10 +1,11 @@
+pub mod commands;
 pub mod config;
 pub mod crypto;
 pub mod framing;
 pub mod messages;
 pub mod session;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 use uuid::Uuid;
 
@@ -15,6 +16,7 @@ use pumpkin_plugin_api::{
     wit::pumpkin::plugin::event::{
         PlayerCustomPayloadEventData, PlayerJoinEventData, PlayerLeaveEventData,
     },
+    wit::pumpkin::plugin::permission::{Permission, PermissionDefault, PermissionLevel},
     wit::pumpkin::plugin::player::{JavaKickOptions, SocketTeardownPolicy},
     wit::pumpkin::plugin::text::TextComponent,
     register_plugin,
@@ -40,6 +42,7 @@ pub struct WasmPluginState {
     pub config: HaikyoConfig,
     pub keystore: KeyStore,
     pub sessions: HashMap<Uuid, PlayerSession>,
+    pub required_players: HashSet<String>,
 }
 
 pub struct HaikyoWasmPlugin {
@@ -59,6 +62,7 @@ impl HaikyoWasmPlugin {
                 config,
                 keystore,
                 sessions: HashMap::new(),
+                required_players: HashSet::new(),
             })),
         }
     }
@@ -317,6 +321,16 @@ impl Plugin for HaikyoWasmPlugin {
     }
 
     fn on_load(&self, context: Context) -> Result<(), String> {
+        let _ = context.register_permission(&Permission {
+            node: "haikyo-pumpkin:haikyo.admin".into(),
+            description: "Permite usar os comandos administrativos /haikyo".into(),
+            default: PermissionDefault::Op(PermissionLevel::Two),
+            children: vec![],
+        });
+
+        let haikyo_cmd = commands::build_haikyo_command(Arc::clone(&self.state));
+        context.register_command(haikyo_cmd, "haikyo-pumpkin:haikyo.admin");
+
         context
             .register_event_handler::<PlayerJoinEvent, _>(
                 JoinHandler {
